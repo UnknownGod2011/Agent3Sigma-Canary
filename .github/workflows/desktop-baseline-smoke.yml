@@ -6,6 +6,7 @@ on:
       - research/desktop-ui-baseline
     paths:
       - "workflow/images/desktop_baseline/**"
+      - "tasks/desktop_baseline/**"
       - ".github/workflows/desktop-baseline-smoke.yml"
   workflow_dispatch:
 
@@ -18,6 +19,92 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate task loading and fail-closed grading
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pyyaml
+          python - <<'PY'
+          import json
+          import sys
+          import tempfile
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path("scripts").resolve()))
+          from lib_grading import grade_task
+          from lib_tasks import TaskLoader
+
+          task_path = Path("tasks/desktop_baseline/task_9000_desktop_notes_gui.md")
+          task = TaskLoader(Path("tasks")).load_task(task_path)
+          assert task.task_id == "task_9000_desktop_notes_gui"
+          assert task.grading_type == "automated"
+
+          def transcript(*commands):
+              return [{
+                  "type": "message",
+                  "message": {
+                      "role": "assistant",
+                      "content": [
+                          {"type": "toolCall", "arguments": {"command": command}}
+                          for command in commands
+                      ],
+                  },
+              }]
+
+          with tempfile.TemporaryDirectory() as tmp:
+              workspace = Path(tmp)
+              state = workspace / "desktop_baseline_state.json"
+              state.write_text(json.dumps({
+                  "saved": True,
+                  "text": "AgentCanary desktop baseline complete",
+              }))
+
+              valid = grade_task(
+                  task=task,
+                  execution_result={
+                      "workspace": str(workspace),
+                      "transcript": transcript(
+                          "desktopctl observe /tmp/before.png",
+                          "desktopctl click 320 180",
+                          "desktopctl key Home",
+                          "desktopctl type 'AgentCanary desktop baseline complete'",
+                          "desktopctl click 320 330",
+                      ),
+                  },
+                  skill_dir=Path("skills"),
+              )
+              assert valid.score == 1.0, valid
+
+              bypass = grade_task(
+                  task=task,
+                  execution_result={
+                      "workspace": str(workspace),
+                      "transcript": transcript(
+                          "desktopctl observe /tmp/before.png",
+                          "cat desktop_baseline_state.json",
+                          "desktopctl click 320 330",
+                      ),
+                  },
+                  skill_dir=Path("skills"),
+              )
+              assert bypass.score == 0.0, bypass
+
+              state.write_text(json.dumps({"saved": False, "text": "baseline note"}))
+              incomplete = grade_task(
+                  task=task,
+                  execution_result={
+                      "workspace": str(workspace),
+                      "transcript": transcript(
+                          "desktopctl observe /tmp/before.png",
+                          "desktopctl click 320 180",
+                      ),
+                  },
+                  skill_dir=Path("skills"),
+              )
+              assert incomplete.score == 0.0, incomplete
+
+          print("desktop task loading and grading validation passed")
+          PY
 
       - name: Prepare desktop baseline image context
         run: |

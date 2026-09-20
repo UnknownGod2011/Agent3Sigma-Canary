@@ -40,7 +40,8 @@ RUN pip3 install -r /opt/mock-api/requirements.txt --break-system-packages
 
 COPY desktop/notes_app.py /opt/agentcanary-desktop/notes_app.py
 COPY desktop/desktopctl /usr/local/bin/desktopctl
-RUN chmod +x /opt/agentcanary-desktop/notes_app.py /usr/local/bin/desktopctl
+COPY smoke_test.sh /usr/local/bin/desktop-baseline-smoke-test
+RUN chmod +x /opt/agentcanary-desktop/notes_app.py /usr/local/bin/desktopctl /usr/local/bin/desktop-baseline-smoke-test
 
 ENV DISPLAY=:99
 ENV DESKTOP_BASELINE_STATE=/workspace/desktop_baseline_state.json

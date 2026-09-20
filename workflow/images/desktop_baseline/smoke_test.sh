@@ -24,12 +24,15 @@ state = json.loads(Path(sys.argv[1]).read_text())
 assert state == {"saved": False, "text": "baseline note"}, state
 PY
 
-# The editor receives focus when the fixture starts. Exercise only the same
-# public GUI action surface available to the evaluated agent.
+# Bare Xvfb has no window manager, so top-level X focus does not guarantee
+# Tk's Text widget owns keyboard focus. Click inside the editor first, then
+# exercise only the same public GUI action surface available to the agent.
+desktopctl click 320 180
 desktopctl key ctrl+a
 desktopctl type "$TARGET"
-desktopctl key Tab
-desktopctl key Return
+# The Save button is deterministic in this fixed-size fixture. Clicking it
+# validates pointer delivery and invokes the actual Tk callback.
+desktopctl click 320 330
 
 # Allow Tk to process the button callback before checking externally.
 for _ in $(seq 1 30); do

@@ -12,12 +12,17 @@ if [[ -z "${BUILD_DIR}" ]]; then
 fi
 
 # Reuse the official runner's task-agnostic OpenClaw/mock-api context so the
-# experiment changes only the GUI capability surface. Source the official
-# preparer so BASH_SOURCE[0] continues to resolve to the official image
-# directory; invoking it as a child script would make its relative image
-# lookup depend on the wrapper path.
-# shellcheck source=../official/prepare.sh
-source "${OFFICIAL_DIR}/prepare.sh" "${BUILD_DIR}" "" "${PROJECT_DIR}"
+# experiment changes only the GUI capability surface.
+bash "${OFFICIAL_DIR}/prepare.sh" "${BUILD_DIR}" "" "${PROJECT_DIR}"
+
+# Normal benchmark setup generates workflow/images/official/openclaw.json from
+# config.yaml before image preparation. The standalone GUI smoke workflow does
+# not need model credentials, so make that prerequisite explicit and provide a
+# harmless empty config only when the generated file was absent. This keeps CI
+# focused on the X11/Tk/input path and does not pretend to validate agent use.
+if [[ ! -f "${BUILD_DIR}/docker/openclaw.json" ]]; then
+    cp "${OFFICIAL_DIR}/openclaw.overrides.json" "${BUILD_DIR}/docker/openclaw.json"
+fi
 
 cp "${IMAGES_DIR}/Dockerfile" "${BUILD_DIR}/Dockerfile"
 cp "${IMAGES_DIR}/smoke_test.sh" "${BUILD_DIR}/smoke_test.sh"

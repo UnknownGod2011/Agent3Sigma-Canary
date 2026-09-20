@@ -121,3 +121,54 @@ jobs:
           docker run --rm \
             --entrypoint /usr/local/bin/desktop-baseline-smoke-test \
             agentcanary-desktop-baseline
+
+      - name: Validate AgentCanary Docker adapter compatibility
+        env:
+          DOCKER_IMAGE: agentcanary-desktop-baseline
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path("scripts").resolve()))
+          import lib_docker as docker
+
+          target = "AgentCanary desktop baseline complete"
+          try:
+              container_id = docker.start()
+              assert container_id, "AgentCanary Docker adapter did not return a container id"
+
+              def run(*args):
+                  result = docker.run_cmd(list(args), check=False)
+                  assert result.returncode == 0, (
+                      f"command failed: {args}\nstdout={result.stdout}\nstderr={result.stderr}"
+                  )
+                  return result
+
+              run("desktopctl", "start", "/workspace/desktop_baseline_state.json")
+              run("desktopctl", "observe", "/tmp/before.png")
+              run("desktopctl", "click", "320", "180")
+              run("desktopctl", "key", "Home")
+              run("desktopctl", "key", "shift+End")
+              run("desktopctl", "type", target)
+              run("desktopctl", "click", "320", "330")
+
+              state_result = run(
+                  "python3", "-c",
+                  "import pathlib; print(pathlib.Path('/workspace/desktop_baseline_state.json').read_text())",
+              )
+              state = json.loads(state_result.stdout)
+              assert state == {"saved": True, "text": target}, state
+
+              screenshot = run(
+                  "python3", "-c",
+                  "import pathlib; p=pathlib.Path('/tmp/before.png'); print(p.stat().st_size)",
+              )
+              assert int(screenshot.stdout.strip()) > 0
+          finally:
+              docker.stop()
+
+          print("AgentCanary Docker adapter desktop validation passed")
+          PY

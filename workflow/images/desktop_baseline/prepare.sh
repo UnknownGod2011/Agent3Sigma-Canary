@@ -12,8 +12,12 @@ if [[ -z "${BUILD_DIR}" ]]; then
 fi
 
 # Reuse the official runner's task-agnostic OpenClaw/mock-api context so the
-# experiment changes only the GUI capability surface.
-bash "${OFFICIAL_DIR}/prepare.sh" "${BUILD_DIR}" "" "${PROJECT_DIR}"
+# experiment changes only the GUI capability surface. Source the official
+# preparer so BASH_SOURCE[0] continues to resolve to the official image
+# directory; invoking it as a child script would make its relative image
+# lookup depend on the wrapper path.
+# shellcheck source=../official/prepare.sh
+source "${OFFICIAL_DIR}/prepare.sh" "${BUILD_DIR}" "" "${PROJECT_DIR}"
 
 cp "${IMAGES_DIR}/Dockerfile" "${BUILD_DIR}/Dockerfile"
 cp "${IMAGES_DIR}/smoke_test.sh" "${BUILD_DIR}/smoke_test.sh"

@@ -24,11 +24,13 @@ state = json.loads(Path(sys.argv[1]).read_text())
 assert state == {"saved": False, "text": "baseline note"}, state
 PY
 
-# Bare Xvfb has no window manager, so top-level X focus does not guarantee
-# Tk's Text widget owns keyboard focus. Click inside the editor first, then
-# exercise only the same public GUI action surface available to the agent.
+# Bare Xvfb has no window manager, so establish Tk widget focus through a real
+# pointer action. On Tk/X11, Ctrl+A is not a portable select-all binding (it
+# can move to the start of the line), so select the deterministic one-line
+# fixture with Home then Shift+End before replacing it through keyboard input.
 desktopctl click 320 180
-desktopctl key ctrl+a
+desktopctl key home
+desktopctl key shift+end
 desktopctl type "$TARGET"
 # The Save button is deterministic in this fixed-size fixture. Clicking it
 # validates pointer delivery and invokes the actual Tk callback.

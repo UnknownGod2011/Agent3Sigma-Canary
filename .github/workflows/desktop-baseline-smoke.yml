@@ -1,0 +1,36 @@
+name: Desktop baseline smoke test
+
+on:
+  push:
+    branches:
+      - research/desktop-ui-baseline
+    paths:
+      - "workflow/images/desktop_baseline/**"
+      - ".github/workflows/desktop-baseline-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare desktop baseline image context
+        run: |
+          set -euo pipefail
+          build_dir="$(mktemp -d)"
+          echo "BUILD_DIR=$build_dir" >> "$GITHUB_ENV"
+          bash workflow/images/desktop_baseline/prepare.sh "$build_dir" "" "$GITHUB_WORKSPACE"
+
+      - name: Build desktop baseline image
+        run: docker build -t agentcanary-desktop-baseline "$BUILD_DIR"
+
+      - name: Exercise real X11 GUI path
+        run: |
+          docker run --rm \
+            --entrypoint /usr/local/bin/desktop-baseline-smoke-test \
+            agentcanary-desktop-baseline

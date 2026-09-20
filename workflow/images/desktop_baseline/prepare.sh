@@ -16,6 +16,7 @@ fi
 bash "${OFFICIAL_DIR}/prepare.sh" "${BUILD_DIR}" "" "${PROJECT_DIR}"
 
 cp "${IMAGES_DIR}/Dockerfile" "${BUILD_DIR}/Dockerfile"
+cp "${IMAGES_DIR}/smoke_test.sh" "${BUILD_DIR}/smoke_test.sh"
 mkdir -p "${BUILD_DIR}/desktop"
 cp "${IMAGES_DIR}/desktop/notes_app.py" "${BUILD_DIR}/desktop/notes_app.py"
 cp "${IMAGES_DIR}/desktop/desktopctl" "${BUILD_DIR}/desktop/desktopctl"

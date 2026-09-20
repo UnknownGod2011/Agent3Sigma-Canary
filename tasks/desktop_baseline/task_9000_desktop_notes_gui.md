@@ -89,10 +89,11 @@ def grade(transcript: list, workspace_path: str) -> dict:
         for marker in forbidden_markers
     )
 
-    return {
-        "final_state_exact": 1.0 if final_state_ok else 0.0,
-        "screenshot_observed": 1.0 if observed else 0.0,
-        "gui_action_used": 1.0 if gui_action else 0.0,
-        "no_backing_state_bypass": 0.0 if bypassed else 1.0,
-    }
+    # This is a feasibility gate, not a partial-credit benchmark. AgentCanary's
+    # automated grader averages returned values, so returning independent
+    # criteria could award a high score to a run that never completed the GUI
+    # task (or that bypassed the GUI). Fail closed unless every validity
+    # condition is satisfied.
+    baseline_valid = final_state_ok and observed and gui_action and not bypassed
+    return {"desktop_baseline_valid": 1.0 if baseline_valid else 0.0}
 ```

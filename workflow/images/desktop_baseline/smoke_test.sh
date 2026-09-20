@@ -24,13 +24,13 @@ state = json.loads(Path(sys.argv[1]).read_text())
 assert state == {"saved": False, "text": "baseline note"}, state
 PY
 
-# Bare Xvfb has no window manager, so establish Tk widget focus through a real
-# pointer action. On Tk/X11, Ctrl+A is not a portable select-all binding (it
-# can move to the start of the line), so select the deterministic one-line
-# fixture with Home then Shift+End before replacing it through keyboard input.
+# Establish Tk widget focus through a real pointer action. Use canonical X11
+# keysyms (Home/End); xdotool treats lowercase home/end as unknown symbols.
+# The fixture is a deterministic single line, so Home then Shift+End selects
+# exactly the existing note before replacement through keyboard input.
 desktopctl click 320 180
-desktopctl key home
-desktopctl key shift+end
+desktopctl key Home
+desktopctl key shift+End
 desktopctl type "$TARGET"
 # The Save button is deterministic in this fixed-size fixture. Clicking it
 # validates pointer delivery and invokes the actual Tk callback.

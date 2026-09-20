@@ -4,6 +4,7 @@ set -euo pipefail
 export DISPLAY="${DISPLAY:-:99}"
 RUNTIME_DIR="${DESKTOP_BASELINE_RUNTIME:-/tmp/agentcanary-desktop}"
 APP="/opt/agentcanary-desktop/notes_app.py"
+WINDOW_NAME="AgentCanary Desktop Baseline"
 mkdir -p "${RUNTIME_DIR}"
 
 usage() {
@@ -20,6 +21,18 @@ wait_for_display() {
   exit 1
 }
 
+window_id() {
+  xdotool search --onlyvisible --name "${WINDOW_NAME}" 2>/dev/null | head -n1
+}
+
+focus_fixture() {
+  wait_for_display
+  local wid
+  wid="$(window_id)"
+  [[ -n "${wid}" ]] || { echo "desktop fixture window not found" >&2; exit 1; }
+  xdotool windowfocus --sync "${wid}"
+}
+
 case "${1:-}" in
   start)
     if ! pgrep -f "Xvfb ${DISPLAY}" >/dev/null 2>&1; then
@@ -30,7 +43,10 @@ case "${1:-}" in
       python3 "${APP}" >"${RUNTIME_DIR}/app.log" 2>&1 &
     fi
     for _ in $(seq 1 50); do
-      xdotool search --name "AgentCanary Desktop Baseline" >/dev/null 2>&1 && exit 0
+      if wid="$(window_id)" && [[ -n "${wid}" ]]; then
+        xdotool windowfocus --sync "${wid}"
+        exit 0
+      fi
       sleep 0.1
     done
     echo "desktop fixture did not become ready" >&2
@@ -44,18 +60,18 @@ case "${1:-}" in
     ;;
   click)
     [[ $# -eq 3 ]] || usage
-    wait_for_display
+    focus_fixture
     xdotool mousemove --sync "$2" "$3" click 1
     ;;
   type)
     [[ $# -ge 2 ]] || usage
-    wait_for_display
+    focus_fixture
     shift
     xdotool type --delay 15 --clearmodifiers -- "$*"
     ;;
   key)
     [[ $# -eq 2 ]] || usage
-    wait_for_display
+    focus_fixture
     xdotool key --clearmodifiers "$2"
     ;;
   stop)

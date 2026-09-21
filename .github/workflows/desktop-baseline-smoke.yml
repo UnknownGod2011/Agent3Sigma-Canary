@@ -263,14 +263,14 @@ jobs:
           if not key:
               raise SystemExit("GEMINI_API_KEY is empty")
 
-          base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+          base_url = "https://generativelanguage.googleapis.com/v1beta"
           model = "gemini-3.6-flash"
           config = {
               "providers": {
-                  "gemini": {
+                  "google": {
                       "base_url": base_url,
                       "api_key": key,
-                      "api": "openai-completions",
+                      "api": "google-generative-ai",
                       "models": [{
                           "id": model,
                           "name": "Gemini 3.6 Flash",
@@ -299,10 +299,36 @@ jobs:
           PY
           bash setup.sh
 
-      - name: Validate Gemini provider without exposing credentials
-        run: uv run python scripts/validate_api.py --scope providers --max-tokens 32
+      - name: Validate native Gemini provider without exposing credentials
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from urllib import request
+
+          key = os.environ["GEMINI_API_KEY"]
+          req = request.Request(
+              "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+              data=json.dumps({
+                  "contents": [{"parts": [{"text": "Reply with exactly OK"}]}],
+                  "generationConfig": {"maxOutputTokens": 16},
+              }).encode("utf-8"),
+              headers={
+                  "Content-Type": "application/json",
+                  "x-goog-api-key": key,
+              },
+              method="POST",
+          )
+          with request.urlopen(req, timeout=30) as response:
+              payload = json.loads(response.read().decode("utf-8"))
+          candidates = payload.get("candidates") or []
+          if not candidates:
+              raise SystemExit("Gemini native validation returned no candidates")
+          print("native Gemini provider validation passed")
+          PY
 
       - name: Run evaluated Gemini desktop baseline
         run: |
           set -euo pipefail
-          bash workflow/images/desktop_baseline/run_benchmark.sh gemini/gemini-3.6-flash
+          bash workflow/images/desktop_baseline/run_benchmark.sh google/gemini-3.6-flash

@@ -264,7 +264,7 @@ jobs:
               raise SystemExit("GEMINI_API_KEY is empty")
 
           base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
-          model = "gemini-2.5-flash"
+          model = "gemini-3.6-flash"
           config = {
               "providers": {
                   "gemini": {
@@ -273,7 +273,7 @@ jobs:
                       "api": "openai-completions",
                       "models": [{
                           "id": model,
-                          "name": "Gemini 2.5 Flash",
+                          "name": "Gemini 3.6 Flash",
                           "reasoning": False,
                           "input": ["text", "image"],
                           "context_window": 1000000,
@@ -305,4 +305,4 @@ jobs:
       - name: Run evaluated Gemini desktop baseline
         run: |
           set -euo pipefail
-          bash workflow/images/desktop_baseline/run_benchmark.sh gemini/gemini-2.5-flash
+          bash workflow/images/desktop_baseline/run_benchmark.sh gemini/gemini-3.6-flash

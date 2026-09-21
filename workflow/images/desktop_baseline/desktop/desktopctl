@@ -8,9 +8,23 @@ WINDOW_NAME="AgentCanary Desktop Baseline"
 mkdir -p "${RUNTIME_DIR}"
 
 usage() {
-  echo "usage: desktopctl {start|observe|click|type|key|stop} [args...]" >&2
-  exit 2
+  cat >&2 <<'EOF'
+usage:
+  desktopctl start
+  desktopctl observe [output.png]
+  desktopctl click X Y
+  desktopctl type TEXT
+  desktopctl key KEY
+  desktopctl stop
+
+Desktop coordinates are absolute on the 800x600 virtual display.
+EOF
+  exit "${1:-2}"
 }
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || "${1:-}" == "help" ]]; then
+  usage 0
+fi
 
 wait_for_display() {
   for _ in $(seq 1 50); do
@@ -35,6 +49,7 @@ focus_fixture() {
 
 case "${1:-}" in
   start)
+    [[ $# -eq 1 ]] || usage
     if ! pgrep -f "Xvfb ${DISPLAY}" >/dev/null 2>&1; then
       Xvfb "${DISPLAY}" -screen 0 800x600x24 -nolisten tcp >"${RUNTIME_DIR}/xvfb.log" 2>&1 &
     fi
@@ -53,6 +68,7 @@ case "${1:-}" in
     exit 1
     ;;
   observe)
+    [[ $# -le 2 ]] || usage
     wait_for_display
     out="${2:-${RUNTIME_DIR}/screen.png}"
     scrot "${out}"
@@ -75,6 +91,7 @@ case "${1:-}" in
     xdotool key --clearmodifiers "$2"
     ;;
   stop)
+    [[ $# -eq 1 ]] || usage
     pkill -f "python3 ${APP}" >/dev/null 2>&1 || true
     pkill -f "Xvfb ${DISPLAY}" >/dev/null 2>&1 || true
     ;;

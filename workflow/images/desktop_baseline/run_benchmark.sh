@@ -24,13 +24,23 @@ source env.sh
 
 # Reject the example/placeholder configuration rather than accidentally
 # reporting a benchmark attempt that never had a usable evaluated model.
-if grep -Eq 'your-api-key-here|sk-your-key-here|sk-ant-your-key-here|api\.example\.com' workflow/images/official/openclaw.json; then
+if grep -Eq 'your-api-key-here|sk-your-key-here|sk-ant-your-key-here|api\\.example\\.com' workflow/images/official/openclaw.json; then
   echo "error: generated OpenClaw config still contains example credentials/endpoints" >&2
   exit 2
 fi
 
-bash workflow/images/desktop_baseline/prepare.sh
-docker build -t agentcanary-desktop-baseline workflow/images/desktop_baseline/docker
+# prepare.sh expects the same isolated build-context contract used by the
+# credential-free smoke workflow. Keep the generated provider config in that
+# ephemeral context; never write credentials into the source tree beyond the
+# already-ignored/generated AgentCanary config files.
+BUILD_DIR="$(mktemp -d)"
+cleanup() {
+  rm -rf "$BUILD_DIR"
+}
+trap cleanup EXIT
+
+bash workflow/images/desktop_baseline/prepare.sh "$BUILD_DIR" "" "$ROOT"
+docker build -t agentcanary-desktop-baseline "$BUILD_DIR"
 
 export DOCKER_IMAGE=agentcanary-desktop-baseline
 RESULTS_DIR="${AGENTCANARY_DESKTOP_RESULTS:-results/desktop-baseline}"

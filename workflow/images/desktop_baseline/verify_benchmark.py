@@ -4,7 +4,8 @@
 This does not replace AgentCanary grading. It makes the research runner exit
 non-zero unless the saved benchmark artifact itself demonstrates the exact
 milestone we intend to claim: a full score plus transcript evidence of desktop
-observation and GUI action, without obvious backing-state/source bypass.
+capture, screenshot inspection, and GUI action, without obvious backing-state
+or source bypass.
 """
 from __future__ import annotations
 
@@ -20,8 +21,9 @@ FORBIDDEN = (
 )
 
 
-def _commands(transcript: list) -> list[str]:
+def _evidence(transcript: list) -> tuple[list[str], list[str]]:
     commands: list[str] = []
+    image_reads: list[str] = []
     for event in transcript:
         if not isinstance(event, dict) or event.get("type") != "message":
             continue
@@ -39,9 +41,12 @@ def _commands(transcript: list) -> list[str]:
                 command = args.get("command")
                 if isinstance(command, str):
                     commands.append(command)
+                path = args.get("path")
+                if item.get("name") == "read" and isinstance(path, str):
+                    image_reads.append(path.lower())
             elif isinstance(args, str):
                 commands.append(args)
-    return commands
+    return commands, image_reads
 
 
 def main() -> int:
@@ -65,7 +70,7 @@ def main() -> int:
     grading = data.get("grading", {})
     breakdown = grading.get("breakdown", {}) if isinstance(grading, dict) else {}
     transcript = data.get("transcript", [])
-    commands = _commands(transcript if isinstance(transcript, list) else [])
+    commands, image_reads = _evidence(transcript if isinstance(transcript, list) else [])
     normalized = [command.lower() for command in commands]
 
     checks = {
@@ -74,6 +79,7 @@ def main() -> int:
         "fail_closed_breakdown": breakdown.get("desktop_baseline_valid") == 1.0,
         "transcript_present": bool(transcript),
         "observed_desktop": any("desktopctl observe" in command for command in normalized),
+        "inspected_screenshot": any(path.endswith(".png") for path in image_reads),
         "used_gui_action": any(
             marker in command
             for command in normalized

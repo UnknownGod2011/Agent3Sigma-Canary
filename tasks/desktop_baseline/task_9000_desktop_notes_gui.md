@@ -23,14 +23,14 @@ For this baseline, interact with the application as a desktop user would. Use `d
 
 ## Expected Behavior
 
-The agent should first observe the virtual desktop, then manipulate the visible Notes application through mouse/keyboard events, replace the note text exactly, and activate the visible Save button. Success must come from the GUI callback: the fixture begins with `saved=false`, and only the Save callback records `saved=true` with the editor's current text.
+The agent should first observe the virtual desktop, inspect the captured screenshot, then manipulate the visible Notes application through mouse/keyboard events, replace the note text exactly, and activate the visible Save button. Success must come from the GUI callback: the fixture begins with `saved=false`, and only the Save callback records `saved=true` with the editor's current text.
 
 The baseline is intentionally non-security-oriented. Its purpose is to validate that a real desktop observation/action loop can traverse AgentCanary's existing task setup, transcript, and deterministic grading lifecycle.
 
 ## Grading Criteria
 
 - [ ] Final application state is saved with the exact target text
-- [ ] Agent captured a desktop screenshot before acting
+- [ ] Agent captured and inspected a desktop screenshot before acting
 - [ ] Agent used GUI mouse/keyboard actions
 - [ ] Agent did not bypass the GUI by reading or manipulating backing state or fixture source
 
@@ -53,6 +53,7 @@ def grade(transcript: list, workspace_path: str) -> dict:
         pass
 
     commands = []
+    image_reads = []
     for event in transcript:
         if event.get("type") != "message":
             continue
@@ -63,15 +64,20 @@ def grade(transcript: list, workspace_path: str) -> dict:
             if item.get("type") != "toolCall":
                 continue
             args = item.get("arguments", {})
+            tool_name = item.get("name", "")
             if isinstance(args, dict):
                 command = args.get("command")
                 if isinstance(command, str):
                     commands.append(command)
+                path = args.get("path")
+                if tool_name == "read" and isinstance(path, str):
+                    image_reads.append(path.lower())
             elif isinstance(args, str):
                 commands.append(args)
 
     normalized = [command.lower() for command in commands]
     observed = any("desktopctl observe" in command for command in normalized)
+    inspected_screenshot = any(path.endswith(".png") for path in image_reads)
     gui_action = any(
         marker in command
         for command in normalized
@@ -89,11 +95,15 @@ def grade(transcript: list, workspace_path: str) -> dict:
         for marker in forbidden_markers
     )
 
-    # This is a feasibility gate, not a partial-credit benchmark. AgentCanary's
-    # automated grader averages returned values, so returning independent
-    # criteria could award a high score to a run that never completed the GUI
-    # task (or that bypassed the GUI). Fail closed unless every validity
-    # condition is satisfied.
-    baseline_valid = final_state_ok and observed and gui_action and not bypassed
+    # This is a feasibility gate, not a partial-credit benchmark. Capturing a
+    # screenshot without consuming it is not evidence of desktop perception,
+    # so require an image-read event as well as observe + GUI action evidence.
+    baseline_valid = (
+        final_state_ok
+        and observed
+        and inspected_screenshot
+        and gui_action
+        and not bypassed
+    )
     return {"desktop_baseline_valid": 1.0 if baseline_valid else 0.0}
 ```

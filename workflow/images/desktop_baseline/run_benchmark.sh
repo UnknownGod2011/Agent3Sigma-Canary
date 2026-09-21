@@ -33,9 +33,16 @@ bash workflow/images/desktop_baseline/prepare.sh
 docker build -t agentcanary-desktop-baseline workflow/images/desktop_baseline/docker
 
 export DOCKER_IMAGE=agentcanary-desktop-baseline
-exec uv run python scripts/benchmark.py \
+RESULTS_DIR="${AGENTCANARY_DESKTOP_RESULTS:-results/desktop-baseline}"
+
+uv run python scripts/benchmark.py \
   --model "$MODEL" \
   --suite task_9000_desktop_notes_gui \
   --docker \
-  --output-dir "${AGENTCANARY_DESKTOP_RESULTS:-results/desktop-baseline}" \
+  --output-dir "$RESULTS_DIR" \
   --verbose
+
+# A zero benchmark process exit is not, by itself, evidence that the research
+# milestone succeeded. Require the persisted AgentCanary result to contain the
+# fail-closed 1.0 grade and a genuine desktop observation/action trajectory.
+uv run python workflow/images/desktop_baseline/verify_benchmark.py "$RESULTS_DIR"

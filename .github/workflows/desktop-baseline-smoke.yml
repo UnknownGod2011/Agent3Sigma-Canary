@@ -106,6 +106,64 @@ jobs:
           print("desktop task loading and grading validation passed")
           PY
 
+      - name: Validate benchmark artifact verifier
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          artifact_dir="$tmp/job_test/task_task_9000_desktop_notes_gui"
+          mkdir -p "$artifact_dir"
+          python - "$artifact_dir/task_task_9000_desktop_notes_gui.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          def event(command):
+              return {
+                  "type": "message",
+                  "message": {
+                      "role": "assistant",
+                      "content": [{"type": "toolCall", "arguments": {"command": command}}],
+                  },
+              }
+
+          payload = {
+              "task_id": "task_9000_desktop_notes_gui",
+              "transcript": [
+                  event("desktopctl observe /tmp/before.png"),
+                  event("desktopctl click 320 180"),
+                  event("desktopctl type 'AgentCanary desktop baseline complete'"),
+                  event("desktopctl click 320 330"),
+              ],
+              "grading": {
+                  "score": 1.0,
+                  "max_score": 1.0,
+                  "breakdown": {"desktop_baseline_valid": 1.0},
+              },
+          }
+          Path(sys.argv[1]).write_text(json.dumps(payload), encoding="utf-8")
+          PY
+          python workflow/images/desktop_baseline/verify_benchmark.py "$tmp"
+          python - "$artifact_dir/task_task_9000_desktop_notes_gui.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          path = Path(sys.argv[1])
+          data = json.loads(path.read_text())
+          data["transcript"].append({
+              "type": "message",
+              "message": {
+                  "role": "assistant",
+                  "content": [{"type": "toolCall", "arguments": {"command": "cat desktop_baseline_state.json"}}],
+              },
+          })
+          path.write_text(json.dumps(data))
+          PY
+          if python workflow/images/desktop_baseline/verify_benchmark.py "$tmp"; then
+            echo "error: verifier accepted a backing-state bypass" >&2
+            exit 1
+          fi
+          echo "desktop benchmark artifact verifier validation passed"
+
       - name: Prepare desktop baseline image context
         run: |
           set -euo pipefail

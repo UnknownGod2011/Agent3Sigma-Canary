@@ -39,16 +39,20 @@ jobs:
           assert task.task_id == "task_9000_desktop_notes_gui"
           assert task.grading_type == "automated"
 
-          def transcript(*commands):
+          def transcript(*commands, read_image=True):
+              content = [
+                  {"type": "toolCall", "arguments": {"command": command}}
+                  for command in commands
+              ]
+              if read_image:
+                  content.insert(1, {
+                      "type": "toolCall",
+                      "name": "read",
+                      "arguments": {"path": "/tmp/before.png"},
+                  })
               return [{
                   "type": "message",
-                  "message": {
-                      "role": "assistant",
-                      "content": [
-                          {"type": "toolCall", "arguments": {"command": command}}
-                          for command in commands
-                      ],
-                  },
+                  "message": {"role": "assistant", "content": content},
               }]
 
           with tempfile.TemporaryDirectory() as tmp:
@@ -59,21 +63,32 @@ jobs:
                   "text": "AgentCanary desktop baseline complete",
               }))
 
+              commands = (
+                  "desktopctl observe /tmp/before.png",
+                  "desktopctl click 320 180",
+                  "desktopctl key Home",
+                  "desktopctl type 'AgentCanary desktop baseline complete'",
+                  "desktopctl click 320 330",
+              )
               valid = grade_task(
                   task=task,
                   execution_result={
                       "workspace": str(workspace),
-                      "transcript": transcript(
-                          "desktopctl observe /tmp/before.png",
-                          "desktopctl click 320 180",
-                          "desktopctl key Home",
-                          "desktopctl type 'AgentCanary desktop baseline complete'",
-                          "desktopctl click 320 330",
-                      ),
+                      "transcript": transcript(*commands),
                   },
                   skill_dir=Path("skills"),
               )
               assert valid.score == 1.0, valid
+
+              capture_only = grade_task(
+                  task=task,
+                  execution_result={
+                      "workspace": str(workspace),
+                      "transcript": transcript(*commands, read_image=False),
+                  },
+                  skill_dir=Path("skills"),
+              )
+              assert capture_only.score == 0.0, capture_only
 
               bypass = grade_task(
                   task=task,
@@ -117,7 +132,7 @@ jobs:
           import sys
           from pathlib import Path
 
-          def event(command):
+          def command_event(command):
               return {
                   "type": "message",
                   "message": {
@@ -126,13 +141,23 @@ jobs:
                   },
               }
 
+          def read_event(path):
+              return {
+                  "type": "message",
+                  "message": {
+                      "role": "assistant",
+                      "content": [{"type": "toolCall", "name": "read", "arguments": {"path": path}}],
+                  },
+              }
+
           payload = {
               "task_id": "task_9000_desktop_notes_gui",
               "transcript": [
-                  event("desktopctl observe /tmp/before.png"),
-                  event("desktopctl click 320 180"),
-                  event("desktopctl type 'AgentCanary desktop baseline complete'"),
-                  event("desktopctl click 320 330"),
+                  command_event("desktopctl observe /tmp/before.png"),
+                  read_event("/tmp/before.png"),
+                  command_event("desktopctl click 320 180"),
+                  command_event("desktopctl type 'AgentCanary desktop baseline complete'"),
+                  command_event("desktopctl click 320 330"),
               ],
               "grading": {
                   "score": 1.0,
@@ -149,6 +174,33 @@ jobs:
           from pathlib import Path
           path = Path(sys.argv[1])
           data = json.loads(path.read_text())
+          data["transcript"] = [
+              event for event in data["transcript"]
+              if not any(
+                  item.get("type") == "toolCall" and item.get("name") == "read"
+                  for item in event.get("message", {}).get("content", [])
+                  if isinstance(item, dict)
+              )
+          ]
+          path.write_text(json.dumps(data))
+          PY
+          if python workflow/images/desktop_baseline/verify_benchmark.py "$tmp"; then
+            echo "error: verifier accepted screenshot capture without image consumption" >&2
+            exit 1
+          fi
+          python - "$artifact_dir/task_task_9000_desktop_notes_gui.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          path = Path(sys.argv[1])
+          data = json.loads(path.read_text())
+          data["transcript"].append({
+              "type": "message",
+              "message": {
+                  "role": "assistant",
+                  "content": [{"type": "toolCall", "name": "read", "arguments": {"path": "/tmp/before.png"}}],
+              },
+          })
           data["transcript"].append({
               "type": "message",
               "message": {
@@ -281,8 +333,6 @@ jobs:
                       }],
                   },
               },
-              # generate_config.py requires judge configuration even though this
-              # desktop baseline uses deterministic automated grading.
               "roles": {
                   "judge": {
                       "base_url": base_url,

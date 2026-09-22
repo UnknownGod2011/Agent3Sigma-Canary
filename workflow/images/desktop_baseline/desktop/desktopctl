@@ -18,6 +18,11 @@ usage:
   desktopctl stop
 
 Desktop coordinates are absolute on the 800x600 virtual display.
+`observe` writes a PNG screenshot (default: /tmp/agentcanary-desktop/screen.png);
+inspect that image before choosing coordinates.
+`key` accepts xdotool/X11 key syntax. Key names are case-sensitive; examples:
+Home, End, BackSpace, shift+End, ctrl+a. For deterministic one-line text selection,
+Home followed by shift+End is preferable to toolkit-dependent ctrl+a bindings.
 The optional start path selects the machine-readable state file; if omitted,
 the fixture uses /workspace/desktop_baseline_state.json.
 EOF

@@ -286,34 +286,72 @@ jobs:
   gemini-model-e2e:
     needs: desktop-smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
     env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY2 }}
+      GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY3 }}
+      GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY4 }}
+      GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY5 }}
+      GEMINI_API_KEY_6: ${{ secrets.GEMINI_API_KEY6 }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Require configured Gemini secret
+      - name: Require configured Gemini key pool
         run: |
           set -euo pipefail
-          if [[ -z "${GEMINI_API_KEY:-}" ]]; then
-            echo "error: GEMINI_API_KEY repository secret is not configured" >&2
+          configured=0
+          for var in \
+            GEMINI_API_KEY_1 GEMINI_API_KEY_2 GEMINI_API_KEY_3 \
+            GEMINI_API_KEY_4 GEMINI_API_KEY_5 GEMINI_API_KEY_6
+          do
+            if [[ -n "${!var:-}" ]]; then
+              configured=$((configured + 1))
+            fi
+          done
+          if [[ "$configured" -eq 0 ]]; then
+            echo "error: no Gemini repository secrets are configured" >&2
             exit 2
           fi
+          echo "Gemini key pool has $configured configured slot(s)"
 
       - name: Install AgentCanary Python runner
         run: python -m pip install --disable-pip-version-check uv
 
-      - name: Generate ephemeral Gemini AgentCanary configuration
+      - name: Run evaluated Gemini desktop baseline with failover
+        shell: bash
         run: |
-          set -euo pipefail
-          python - <<'PY'
+          set -uo pipefail
+
+          key_vars=(
+            GEMINI_API_KEY_1
+            GEMINI_API_KEY_2
+            GEMINI_API_KEY_3
+            GEMINI_API_KEY_4
+            GEMINI_API_KEY_5
+            GEMINI_API_KEY_6
+          )
+          transient_re='HTTP (429|500|502|503|504)|RESOURCE_EXHAUSTED|UNAVAILABLE|high[- ]demand|rate.?limit|quota'
+          attempted=0
+
+          for idx in "${!key_vars[@]}"; do
+            slot=$((idx + 1))
+            var="${key_vars[$idx]}"
+            key="${!var:-}"
+            if [[ -z "$key" ]]; then
+              continue
+            fi
+            attempted=$((attempted + 1))
+            echo "::group::Gemini key slot $slot"
+
+            GEMINI_API_KEY="$key" python - <<'PY'
           import os
           from pathlib import Path
           import yaml
 
           key = os.environ.get("GEMINI_API_KEY", "")
           if not key:
-              raise SystemExit("GEMINI_API_KEY is empty")
+              raise SystemExit("selected Gemini key is empty")
 
           base_url = "https://generativelanguage.googleapis.com/v1beta"
           model = "gemini-3.6-flash"
@@ -347,15 +385,21 @@ jobs:
               encoding="utf-8",
           )
           PY
-          bash setup.sh
+            config_rc=$?
+            if [[ "$config_rc" -ne 0 ]]; then
+              echo "::endgroup::"
+              exit "$config_rc"
+            fi
 
-      - name: Validate native Gemini provider without exposing credentials
-        run: |
-          set -euo pipefail
-          python - <<'PY'
+            if ! bash setup.sh; then
+              echo "::endgroup::"
+              exit 2
+            fi
+
+            GEMINI_API_KEY="$key" python - <<'PY'
           import json
           import os
-          import time
+          import sys
           from urllib import error, request
 
           key = os.environ["GEMINI_API_KEY"]
@@ -364,35 +408,72 @@ jobs:
               "contents": [{"parts": [{"text": "Reply with exactly OK"}]}],
               "generationConfig": {"maxOutputTokens": 16},
           }).encode("utf-8")
+          req = request.Request(
+              url,
+              data=body,
+              headers={
+                  "Content-Type": "application/json",
+                  "x-goog-api-key": key,
+              },
+              method="POST",
+          )
+          try:
+              with request.urlopen(req, timeout=30) as response:
+                  payload = json.loads(response.read().decode("utf-8"))
+          except error.HTTPError as exc:
+              if exc.code in (429, 500, 502, 503, 504):
+                  print(f"Gemini slot transient HTTP {exc.code}; trying next configured slot")
+                  raise SystemExit(75)
+              if exc.code in (401, 403):
+                  print(f"Gemini slot rejected credentials with HTTP {exc.code}; trying next configured slot")
+                  raise SystemExit(77)
+              raise
 
-          payload = None
-          for attempt in range(1, 4):
-              req = request.Request(
-                  url,
-                  data=body,
-                  headers={
-                      "Content-Type": "application/json",
-                      "x-goog-api-key": key,
-                  },
-                  method="POST",
-              )
-              try:
-                  with request.urlopen(req, timeout=30) as response:
-                      payload = json.loads(response.read().decode("utf-8"))
-                  break
-              except error.HTTPError as exc:
-                  if exc.code not in (429, 500, 502, 503, 504) or attempt == 3:
-                      raise
-                  print(f"Gemini validation transient HTTP {exc.code}; retrying ({attempt}/3)")
-                  time.sleep(attempt * 2)
-
-          candidates = (payload or {}).get("candidates") or []
-          if not candidates:
-              raise SystemExit("Gemini native validation returned no candidates")
+          if not (payload.get("candidates") or []):
+              print("Gemini slot returned no candidates; trying next configured slot")
+              raise SystemExit(75)
           print("native Gemini provider validation passed")
           PY
+            validate_rc=$?
+            if [[ "$validate_rc" -eq 75 || "$validate_rc" -eq 77 ]]; then
+              echo "::endgroup::"
+              continue
+            elif [[ "$validate_rc" -ne 0 ]]; then
+              echo "::endgroup::"
+              exit "$validate_rc"
+            fi
 
-      - name: Run evaluated Gemini desktop baseline
-        run: |
-          set -euo pipefail
-          bash workflow/images/desktop_baseline/run_benchmark.sh google/gemini-3.6-flash
+            export AGENTCANARY_DESKTOP_RESULTS="results/desktop-baseline/key-slot-$slot"
+            attempt_log="$(mktemp)"
+            set +e
+            bash workflow/images/desktop_baseline/run_benchmark.sh google/gemini-3.6-flash \
+              2>&1 | tee "$attempt_log"
+            benchmark_rc=${PIPESTATUS[0]}
+            set -e
+
+            if [[ "$benchmark_rc" -eq 0 ]]; then
+              rm -f "$attempt_log"
+              echo "desktop baseline succeeded with Gemini key slot $slot"
+              echo "::endgroup::"
+              exit 0
+            fi
+
+            if grep -Eiq "$transient_re" "$attempt_log"; then
+              echo "Gemini key slot $slot hit provider capacity/quota; trying next configured slot"
+              rm -f "$attempt_log"
+              echo "::endgroup::"
+              continue
+            fi
+
+            echo "desktop baseline failed without provider-capacity evidence; refusing to hide a real benchmark failure behind key rotation" >&2
+            rm -f "$attempt_log"
+            echo "::endgroup::"
+            exit "$benchmark_rc"
+          done
+
+          if [[ "$attempted" -eq 0 ]]; then
+            echo "error: no configured Gemini key slots were available" >&2
+          else
+            echo "error: all configured Gemini key slots were exhausted or unavailable" >&2
+          fi
+          exit 75

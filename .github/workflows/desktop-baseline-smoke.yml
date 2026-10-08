@@ -344,6 +344,7 @@ jobs:
             attempted=$((attempted + 1))
             echo "::group::Gemini key slot $slot"
 
+            set +e
             GEMINI_API_KEY="$key" python - <<'PY'
           import os
           from pathlib import Path
@@ -428,6 +429,12 @@ jobs:
                   print(f"Gemini slot rejected credentials with HTTP {exc.code}; trying next configured slot")
                   raise SystemExit(77)
               raise
+          except (TimeoutError, error.URLError) as exc:
+              print(
+                  f"Gemini slot transport failure "
+                  f"({type(exc).__name__}); trying next configured slot"
+              )
+              raise SystemExit(75)
 
           if not (payload.get("candidates") or []):
               print("Gemini slot returned no candidates; trying next configured slot")
@@ -435,6 +442,7 @@ jobs:
           print("native Gemini provider validation passed")
           PY
             validate_rc=$?
+            set -e
             if [[ "$validate_rc" -eq 75 || "$validate_rc" -eq 77 ]]; then
               echo "::endgroup::"
               continue

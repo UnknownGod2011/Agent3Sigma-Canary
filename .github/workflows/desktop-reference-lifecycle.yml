@@ -93,7 +93,9 @@ jobs:
           wrapper = Path(
               "workflow/images/desktop_baseline/run_reference_benchmark.py"
           ).read_text(encoding="utf-8")
-          assert "docker cp" in wrapper
+          assert "_copy_task_workspaces_to_host" in wrapper
+          assert '"docker",' in wrapper
+          assert '"cp",' in wrapper
           assert "benchmark.main()" in wrapper
           assert "grade_task" not in wrapper
 

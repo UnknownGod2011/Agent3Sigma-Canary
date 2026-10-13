@@ -178,10 +178,10 @@ def cmd_agent(args: argparse.Namespace) -> int:
         events.append(_tool_call("exec", {"command": command}))
         events.append(_tool_result(_run_gui(*argv) or "ok"))
 
-    # Give the Tk event loop a short opportunity to persist the Save callback.
-    # The reference controller intentionally does not inspect the backing state;
-    # AgentCanary's grader owns that verification boundary.
-    time.sleep(0.25)
+    # The validated smoke test allows the Tk event loop up to three seconds to
+    # persist the Save callback. Match that timing budget here without reading
+    # the fixture's backing state from the reference controller itself.
+    time.sleep(3.0)
     events.append(
         _message(
             "assistant",

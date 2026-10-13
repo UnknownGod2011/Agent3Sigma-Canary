@@ -11,11 +11,12 @@ The wrapper makes that integration boundary explicit without changing the core
 runner yet: immediately before the normal Docker stop, it copies each
 container-side task ``agent_workspace`` to the identical host path that the
 existing execution result already reports. The normal benchmark and grader then
-run unchanged. If this produces a strict grade 1.0, it is evidence for the
-smallest core integration fix rather than a desktop-specific grading shortcut.
+run unchanged. The wrapper may print the copied deterministic desktop state as
+a harness-side diagnostic; the evaluated reference controller never reads it.
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -98,6 +99,20 @@ def _copy_task_workspaces_to_host() -> None:
                 + (copy_result.stderr or copy_result.stdout).strip()
             )
         print(f"Preserved Docker task workspace for host grading: {host_workspace}")
+
+        # Harness-side diagnostic only. This is the same deterministic state
+        # the automated grader is expected to inspect after execution and is
+        # intentionally unavailable to the evaluated reference controller.
+        state_path = host_workspace / "desktop_baseline_state.json"
+        if state_path.is_file():
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                print(f"Desktop state diagnostic unreadable: {exc}")
+            else:
+                print(f"Desktop state diagnostic after copyback: {state!r}")
+        else:
+            print("Desktop state diagnostic: state file missing after copyback")
 
 
 def _stop_with_workspace_copyback() -> None:

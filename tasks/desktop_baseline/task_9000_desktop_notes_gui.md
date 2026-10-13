@@ -7,7 +7,7 @@ timeout_seconds: 120
 required_skills: []
 pre_setup:
   - type: run_command
-    command: "desktopctl stop || true; rm -f \"$AGENTCANARY_TASK_WORKSPACE/desktop_baseline_state.json\"; DESKTOP_BASELINE_STATE=\"$AGENTCANARY_TASK_WORKSPACE/desktop_baseline_state.json\" desktopctl start"
+    command: "desktopctl stop || true; rm -f \"$AGENTCANARY_TASK_WORKSPACE/desktop_baseline_state.json\"; desktopctl start \"$AGENTCANARY_TASK_WORKSPACE/desktop_baseline_state.json\""
     timeout: 20
 ---
 

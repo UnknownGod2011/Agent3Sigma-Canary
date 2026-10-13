@@ -61,7 +61,7 @@ jobs:
           results_dir="$RUNNER_TEMP/desktop-reference-results"
           rm -rf "$results_dir"
 
-          uv run python scripts/benchmark.py \
+          uv run python workflow/images/desktop_baseline/run_reference_benchmark.py \
             --model reference/desktop \
             --suite task_9000_desktop_notes_gui \
             --docker \
@@ -89,6 +89,13 @@ jobs:
           )
           for marker in forbidden_runtime_reads:
               assert marker not in source, marker
+
+          wrapper = Path(
+              "workflow/images/desktop_baseline/run_reference_benchmark.py"
+          ).read_text(encoding="utf-8")
+          assert "docker cp" in wrapper
+          assert "benchmark.main()" in wrapper
+          assert "grade_task" not in wrapper
 
           assert "_inspect_png(SCREENSHOT_PATH)" in source
           assert '"desktopctl", "observe"' in source

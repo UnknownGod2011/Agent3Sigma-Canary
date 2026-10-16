@@ -115,6 +115,52 @@ def _copy_task_workspaces_to_host() -> None:
             print("Desktop state diagnostic: state file missing after copyback")
 
 
+def _assert_container_state_before_teardown() -> None:
+    """Verify the fixture saved correctly inside Docker before the container is removed.
+
+    This is a harness-side negative-control assertion. It deliberately does not
+    copy the state file to the host, so the normal host grader still cannot see it.
+    """
+    container_id = docker.get_container_id()
+    if not container_id:
+        raise RuntimeError("cannot verify desktop state: no active Docker container")
+
+    probe = r"""
+import json
+from pathlib import Path
+
+target = "AgentCanary desktop baseline complete"
+paths = list(Path("/tmp/scry").glob("*/agent_workspace/desktop_baseline_state.json"))
+if len(paths) != 1:
+    raise SystemExit(f"expected one task state file inside container; found {len(paths)}: {[str(p) for p in paths]}")
+path = paths[0]
+try:
+    state = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, ValueError) as exc:
+    raise SystemExit(f"could not read in-container task state: {exc}")
+if state.get("saved") is not True or state.get("text") != target:
+    raise SystemExit(f"unexpected in-container task state at {path}: {state!r}")
+print(f"pre-teardown state verified inside container: saved={state['saved']}, text={state['text']!r}")
+"""
+    result = subprocess.run(
+        ["docker", "exec", container_id, "python3", "-c", probe],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise RuntimeError(f"pre-teardown desktop state verification failed: {detail}")
+    print(result.stdout.strip(), flush=True)
+
+
+def _stop_after_container_state_assertion() -> None:
+    if docker.is_active():
+        _assert_container_state_before_teardown()
+    _original_stop()
+
+
 def _stop_with_workspace_copyback() -> None:
     if docker.is_active():
         _copy_task_workspaces_to_host()
@@ -122,11 +168,29 @@ def _stop_with_workspace_copyback() -> None:
 
 
 def main() -> None:
-    # Negative control: run the exact same AgentCanary lifecycle without the
-    # experimental copyback hook so CI can test the host-grading boundary.
-    if "--no-workspace-copyback" in sys.argv:
-        sys.argv.remove("--no-workspace-copyback")
-        print("Running negative control without workspace copyback", flush=True)
+    # Negative control: run the same lifecycle without copyback. Optionally
+    # prove the GUI fixture saved the expected state inside Docker immediately
+    # before teardown, while leaving that state unavailable to host-side grading.
+    no_copyback = "--no-workspace-copyback" in sys.argv
+    assert_container_state = "--assert-container-state-before-stop" in sys.argv
+    if assert_container_state and not no_copyback:
+        raise SystemExit("--assert-container-state-before-stop requires --no-workspace-copyback")
+
+    for flag in ("--no-workspace-copyback", "--assert-container-state-before-stop"):
+        if flag in sys.argv:
+            sys.argv.remove(flag)
+
+    if no_copyback:
+        if assert_container_state:
+            docker.stop = _stop_after_container_state_assertion
+            benchmark.docker.stop = _stop_after_container_state_assertion
+            print(
+                "Running negative control without workspace copyback; "
+                "checking saved state inside Docker before teardown",
+                flush=True,
+            )
+        else:
+            print("Running negative control without workspace copyback", flush=True)
         benchmark.main()
         return
 

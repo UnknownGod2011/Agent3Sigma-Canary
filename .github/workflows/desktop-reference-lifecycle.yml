@@ -83,6 +83,7 @@ jobs:
 
           uv run python workflow/images/desktop_baseline/run_reference_benchmark.py \
             --no-workspace-copyback \
+            --assert-container-state-before-stop \
             --model reference/desktop \
             --suite task_9000_desktop_notes_gui \
             --docker \

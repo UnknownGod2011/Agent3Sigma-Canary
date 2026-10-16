@@ -122,6 +122,14 @@ def _stop_with_workspace_copyback() -> None:
 
 
 def main() -> None:
+    # Negative control: run the exact same AgentCanary lifecycle without the
+    # experimental copyback hook so CI can test the host-grading boundary.
+    if "--no-workspace-copyback" in sys.argv:
+        sys.argv.remove("--no-workspace-copyback")
+        print("Running negative control without workspace copyback", flush=True)
+        benchmark.main()
+        return
+
     docker.stop = _stop_with_workspace_copyback
     benchmark.docker.stop = _stop_with_workspace_copyback
     benchmark.main()

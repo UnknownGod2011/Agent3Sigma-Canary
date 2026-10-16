@@ -73,6 +73,81 @@ jobs:
             workflow/images/desktop_baseline/verify_benchmark.py \
             "$results_dir"
 
+      - name: Prove host grading requires Docker workspace copyback
+        env:
+          DOCKER_IMAGE: agentcanary-desktop-reference
+        run: |
+          set -euo pipefail
+          results_dir="$RUNNER_TEMP/desktop-no-copyback-results"
+          rm -rf "$results_dir"
+
+          uv run python workflow/images/desktop_baseline/run_reference_benchmark.py \
+            --no-workspace-copyback \
+            --model reference/desktop \
+            --suite task_9000_desktop_notes_gui \
+            --docker \
+            --timeout-multiplier 1.0 \
+            --output-dir "$results_dir" \
+            --verbose
+
+          python - "$results_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          task_id = "task_9000_desktop_notes_gui"
+          root = Path(sys.argv[1])
+          candidates = list(root.glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+          assert candidates, f"no negative-control artifact found under {root}"
+          artifact = max(candidates, key=lambda path: path.stat().st_mtime_ns)
+          data = json.loads(artifact.read_text(encoding="utf-8"))
+          grading = data.get("grading", {})
+          assert data.get("task_id") == task_id, data.get("task_id")
+          assert grading.get("max_score") == 1.0, grading
+          assert grading.get("score") == 0.0, (
+              "no-copyback control unexpectedly passed host-side grading",
+              grading,
+          )
+          breakdown = grading.get("breakdown", {})
+          assert breakdown.get("desktop_baseline_valid") == 0.0, breakdown
+
+          commands = []
+          image_reads = []
+          for event in data.get("transcript", []):
+              if not isinstance(event, dict) or event.get("type") != "message":
+                  continue
+              message = event.get("message", {})
+              if not isinstance(message, dict) or message.get("role") != "assistant":
+                  continue
+              for item in message.get("content", []):
+                  if not isinstance(item, dict) or item.get("type") != "toolCall":
+                      continue
+                  args = item.get("arguments", {})
+                  if isinstance(args, dict):
+                      command = args.get("command")
+                      if isinstance(command, str):
+                          commands.append(command.lower())
+                      path = args.get("path")
+                      if item.get("name") == "read" and isinstance(path, str):
+                          image_reads.append(path.lower())
+                  elif isinstance(args, str):
+                      commands.append(args.lower())
+
+          assert any("desktopctl observe" in command for command in commands), commands
+          assert any(path.endswith(".png") for path in image_reads), image_reads
+          assert any("desktopctl click" in command for command in commands), commands
+          assert any("desktopctl type" in command for command in commands), commands
+          assert any("desktopctl key" in command for command in commands), commands
+          forbidden = ("desktop_baseline_state.json", "notes_app.py", "/opt/agentcanary-desktop")
+          assert not any(marker in command for command in commands for marker in forbidden), commands
+
+          print(
+              "negative control confirmed: the reference trajectory contains screenshot "
+              "inspection and GUI actions, but host-side grading scores 0.0 without workspace copyback"
+          )
+          print(f"artifact: {artifact}")
+          PY
+
       - name: Assert reference trajectory stays inside GUI boundary
         run: |
           set -euo pipefail

@@ -23,23 +23,55 @@ FORBIDDEN = (
 )
 
 
-def _tokens(command: str) -> list[str]:
-    try:
-        return shlex.split(command)
-    except ValueError:
-        return command.split()
+def _command_segments(command: str) -> list[list[str]]:
+    # Only count literal top-level desktopctl invocations as GUI evidence.
+    segments = []
+    start = 0
+    quote = None
+    escaped = False
+    index = 0
+    while index < len(command):
+        char = command[index]
+        if escaped:
+            escaped = False
+        elif char == "\\" and quote != "'":
+            escaped = True
+        elif quote is not None:
+            if char == quote:
+                quote = None
+        elif char in {"'", '"'}:
+            quote = char
+        elif char in {";", "&", "|", "\n"}:
+            raw = command[start:index].strip()
+            if raw:
+                try:
+                    tokens = shlex.split(raw)
+                except ValueError:
+                    tokens = []
+                if tokens:
+                    segments.append(tokens)
+            if char in {"&", "|"} and index + 1 < len(command) and command[index + 1] == char:
+                index += 1
+            start = index + 1
+        index += 1
+    raw = command[start:].strip()
+    if raw:
+        try:
+            tokens = shlex.split(raw)
+        except ValueError:
+            tokens = []
+        if tokens:
+            segments.append(tokens)
+    return segments
 
 
 def _observed_path(command: str) -> str | None:
-    tokens = _tokens(command)
-    for index in range(len(tokens) - 1):
-        if Path(tokens[index]).name == "desktopctl" and tokens[index + 1] == "observe":
-            if index + 2 < len(tokens) and tokens[index + 2] not in {";", "&&", "||", "|", "&"}:
-                return posixpath.normpath(tokens[index + 2])
+    for tokens in _command_segments(command):
+        if len(tokens) >= 2 and Path(tokens[0]).name == "desktopctl" and tokens[1] == "observe":
+            if len(tokens) >= 3 and not tokens[2].startswith(("<", ">")):
+                return posixpath.normpath(tokens[2])
             return DEFAULT_SCREENSHOT
     return None
-
-
 def _evidence(transcript: list) -> tuple[list[tuple[int, str]], list[tuple[int, str]], list[tuple[int, str]], bool]:
     observations: list[tuple[int, str]] = []
     image_reads: list[tuple[int, str]] = []
@@ -71,12 +103,11 @@ def _evidence(transcript: list) -> tuple[list[tuple[int, str]], list[tuple[int, 
                     path = _observed_path(command)
                     if path is not None:
                         observations.append((sequence, path))
-                    tokens = _tokens(command)
                     if any(
-                        Path(tokens[index]).name == "desktopctl"
-                        and index + 1 < len(tokens)
-                        and tokens[index + 1] in {"click", "type", "key"}
-                        for index in range(len(tokens))
+                        len(tokens) >= 2
+                        and Path(tokens[0]).name == "desktopctl"
+                        and tokens[1] in {"click", "type", "key"}
+                        for tokens in _command_segments(command)
                     ):
                         gui_actions.append((sequence, command))
 

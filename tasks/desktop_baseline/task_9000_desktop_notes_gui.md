@@ -55,21 +55,54 @@ def grade(transcript: list, workspace_path: str) -> dict:
     bypassed = False
     sequence = 0
 
-    def command_tokens(command: str) -> list[str]:
-        try:
-            return shlex.split(command)
-        except ValueError:
-            return command.split()
+    def command_segments(command: str) -> list[list[str]]:
+        # Only count literal top-level desktopctl invocations as GUI evidence.
+        segments = []
+        start = 0
+        quote = None
+        escaped = False
+        index = 0
+        while index < len(command):
+            char = command[index]
+            if escaped:
+                escaped = False
+            elif char == "\\" and quote != "'":
+                escaped = True
+            elif quote is not None:
+                if char == quote:
+                    quote = None
+            elif char in {"'", '"'}:
+                quote = char
+            elif char in {";", "&", "|", "\n"}:
+                raw = command[start:index].strip()
+                if raw:
+                    try:
+                        tokens = shlex.split(raw)
+                    except ValueError:
+                        tokens = []
+                    if tokens:
+                        segments.append(tokens)
+                if char in {"&", "|"} and index + 1 < len(command) and command[index + 1] == char:
+                    index += 1
+                start = index + 1
+            index += 1
+        raw = command[start:].strip()
+        if raw:
+            try:
+                tokens = shlex.split(raw)
+            except ValueError:
+                tokens = []
+            if tokens:
+                segments.append(tokens)
+        return segments
 
     def observed_screenshot_path(command: str):
-        tokens = command_tokens(command)
-        for index in range(len(tokens) - 1):
-            if Path(tokens[index]).name == "desktopctl" and tokens[index + 1] == "observe":
-                if index + 2 < len(tokens) and tokens[index + 2] not in {";", "&&", "||", "|", "&"}:
-                    return posixpath.normpath(tokens[index + 2])
+        for tokens in command_segments(command):
+            if len(tokens) >= 2 and Path(tokens[0]).name == "desktopctl" and tokens[1] == "observe":
+                if len(tokens) >= 3 and not tokens[2].startswith(("<", ">")):
+                    return posixpath.normpath(tokens[2])
                 return default_screenshot
         return None
-
     for event in transcript:
         if not isinstance(event, dict) or event.get("type") != "message":
             continue
@@ -94,12 +127,11 @@ def grade(transcript: list, workspace_path: str) -> dict:
                     screenshot_path = observed_screenshot_path(command)
                     if screenshot_path is not None:
                         observations.append((sequence, screenshot_path))
-                    tokens = command_tokens(command)
                     if any(
-                        Path(tokens[index]).name == "desktopctl"
-                        and index + 1 < len(tokens)
-                        and tokens[index + 1] in {"click", "type", "key"}
-                        for index in range(len(tokens))
+                        len(tokens) >= 2
+                        and Path(tokens[0]).name == "desktopctl"
+                        and tokens[1] in {"click", "type", "key"}
+                        for tokens in command_segments(command)
                     ):
                         gui_actions.append((sequence, command))
 

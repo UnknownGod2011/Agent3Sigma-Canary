@@ -2,18 +2,20 @@
 """Fail-closed verifier for the real desktop-baseline benchmark artifact.
 
 This does not replace AgentCanary grading. It makes the research runner exit
-non-zero unless the saved benchmark artifact itself demonstrates the exact
-milestone we intend to claim: a full score plus transcript evidence of desktop
-capture, screenshot inspection, and GUI action, without obvious backing-state
-or source bypass.
+non-zero unless the saved AgentCanary result contains a full score and an
+ordered trajectory: observe a screenshot, read that exact screenshot, then act
+through GUI input, without obvious backing-state or fixture-source access.
 """
 from __future__ import annotations
 
 import json
+import posixpath
+import shlex
 import sys
 from pathlib import Path
 
 TASK_ID = "task_9000_desktop_notes_gui"
+DEFAULT_SCREENSHOT = "/tmp/agentcanary-desktop/screen.png"
 FORBIDDEN = (
     "desktop_baseline_state.json",
     "notes_app.py",
@@ -21,9 +23,30 @@ FORBIDDEN = (
 )
 
 
-def _evidence(transcript: list) -> tuple[list[str], list[str]]:
-    commands: list[str] = []
-    image_reads: list[str] = []
+def _tokens(command: str) -> list[str]:
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return command.split()
+
+
+def _observed_path(command: str) -> str | None:
+    tokens = _tokens(command)
+    for index in range(len(tokens) - 1):
+        if Path(tokens[index]).name == "desktopctl" and tokens[index + 1] == "observe":
+            if index + 2 < len(tokens) and tokens[index + 2] not in {";", "&&", "||", "|", "&"}:
+                return posixpath.normpath(tokens[index + 2])
+            return DEFAULT_SCREENSHOT
+    return None
+
+
+def _evidence(transcript: list) -> tuple[list[tuple[int, str]], list[tuple[int, str]], list[tuple[int, str]], bool]:
+    observations: list[tuple[int, str]] = []
+    image_reads: list[tuple[int, str]] = []
+    gui_actions: list[tuple[int, str]] = []
+    bypassed = False
+    sequence = 0
+
     for event in transcript:
         if not isinstance(event, dict) or event.get("type") != "message":
             continue
@@ -33,20 +56,54 @@ def _evidence(transcript: list) -> tuple[list[str], list[str]]:
         content = message.get("content", [])
         if not isinstance(content, list):
             continue
+
         for item in content:
             if not isinstance(item, dict) or item.get("type") != "toolCall":
                 continue
             args = item.get("arguments", {})
+            args_text = json.dumps(args, ensure_ascii=False).lower()
+            if any(marker in args_text for marker in FORBIDDEN):
+                bypassed = True
+
             if isinstance(args, dict):
                 command = args.get("command")
                 if isinstance(command, str):
-                    commands.append(command)
+                    path = _observed_path(command)
+                    if path is not None:
+                        observations.append((sequence, path))
+                    tokens = _tokens(command)
+                    if any(
+                        Path(tokens[index]).name == "desktopctl"
+                        and index + 1 < len(tokens)
+                        and tokens[index + 1] in {"click", "type", "key"}
+                        for index in range(len(tokens))
+                    ):
+                        gui_actions.append((sequence, command))
+
                 path = args.get("path")
                 if item.get("name") == "read" and isinstance(path, str):
-                    image_reads.append(path.lower())
-            elif isinstance(args, str):
-                commands.append(args)
-    return commands, image_reads
+                    image_reads.append((sequence, posixpath.normpath(path)))
+
+            sequence += 1
+
+    return observations, image_reads, gui_actions, bypassed
+
+
+def _inspected_before_action(
+    observations: list[tuple[int, str]],
+    image_reads: list[tuple[int, str]],
+    gui_actions: list[tuple[int, str]],
+) -> bool:
+    first_action = min((index for index, _ in gui_actions), default=None)
+    if first_action is None:
+        return False
+    return any(
+        observation_index < read_index < first_action
+        and observation_path == read_path
+        and read_path.lower().endswith(".png")
+        for observation_index, observation_path in observations
+        for read_index, read_path in image_reads
+    )
 
 
 def main() -> int:
@@ -66,30 +123,30 @@ def main() -> int:
     except (OSError, ValueError) as exc:
         print(f"error: cannot read benchmark artifact {artifact}: {exc}", file=sys.stderr)
         return 1
+    if not isinstance(data, dict):
+        print(f"error: benchmark artifact root must be a JSON object: {artifact}", file=sys.stderr)
+        return 1
 
     grading = data.get("grading", {})
-    breakdown = grading.get("breakdown", {}) if isinstance(grading, dict) else {}
+    if not isinstance(grading, dict):
+        grading = {}
+    breakdown = grading.get("breakdown", {})
+    if not isinstance(breakdown, dict):
+        breakdown = {}
     transcript = data.get("transcript", [])
-    commands, image_reads = _evidence(transcript if isinstance(transcript, list) else [])
-    normalized = [command.lower() for command in commands]
+    if not isinstance(transcript, list):
+        transcript = []
 
+    observations, image_reads, gui_actions, bypassed = _evidence(transcript)
     checks = {
         "task_id": data.get("task_id") == TASK_ID,
         "full_grade": grading.get("score") == 1.0 and grading.get("max_score") == 1.0,
         "fail_closed_breakdown": breakdown.get("desktop_baseline_valid") == 1.0,
         "transcript_present": bool(transcript),
-        "observed_desktop": any("desktopctl observe" in command for command in normalized),
-        "inspected_screenshot": any(path.endswith(".png") for path in image_reads),
-        "used_gui_action": any(
-            marker in command
-            for command in normalized
-            for marker in ("desktopctl click", "desktopctl type", "desktopctl key")
-        ),
-        "no_obvious_bypass": not any(
-            marker in command
-            for command in normalized
-            for marker in FORBIDDEN
-        ),
+        "observed_desktop": bool(observations),
+        "inspected_screenshot": _inspected_before_action(observations, image_reads, gui_actions),
+        "used_gui_action": bool(gui_actions),
+        "no_obvious_bypass": not bypassed,
     }
 
     failed = [name for name, ok in checks.items() if not ok]

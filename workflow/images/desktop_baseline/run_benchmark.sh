@@ -45,7 +45,11 @@ docker build -t agentcanary-desktop-baseline "$BUILD_DIR"
 export DOCKER_IMAGE=agentcanary-desktop-baseline
 RESULTS_DIR="${AGENTCANARY_DESKTOP_RESULTS:-results/desktop-baseline}"
 
-uv run python scripts/benchmark.py \
+# Preserve the task workspace before AgentCanary removes its Docker container.
+# The host-side automated grader reads the independently persisted state from
+# that workspace; running benchmark.py directly loses the container's final
+# state and makes a valid GUI save indistinguishable from a failed task.
+uv run python workflow/images/desktop_baseline/run_reference_benchmark.py \
   --model "$MODEL" \
   --suite task_9000_desktop_notes_gui \
   --docker \

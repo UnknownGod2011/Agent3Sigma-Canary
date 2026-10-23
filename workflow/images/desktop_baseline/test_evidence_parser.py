@@ -279,6 +279,12 @@ def main() -> None:
         assert grade(task, workspace, wrong_scanline_length) == 0.0
         assert _evidence(wrong_scanline_length)[3]
 
+        # A PNG filter byte outside the defined 0..4 range is not decodable evidence.
+        invalid_filter = transcript(commands)
+        replace_image_payload(invalid_filter, make_png_payload(zlib.compress(b"\x05\x00\x00\x00")))
+        assert grade(task, workspace, invalid_filter) == 0.0
+        assert _evidence(invalid_filter)[3]
+
         wrong_image_mime = transcript(commands)
         replace_image_payload(
             wrong_image_mime,

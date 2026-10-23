@@ -228,13 +228,19 @@ jobs:
           from pathlib import Path
           path = Path(sys.argv[1])
           data = json.loads(path.read_text())
-          data["transcript"] = [
-              event for event in data["transcript"]
-              if not any(
+          def is_removed_read_evidence(event):
+              message = event.get("message", {})
+              if message.get("role") == "toolResult" and message.get("toolCallId") == "call-read":
+                  return True
+              return any(
                   item.get("type") == "toolCall" and item.get("name") == "read"
-                  for item in event.get("message", {}).get("content", [])
+                  for item in message.get("content", [])
                   if isinstance(item, dict)
               )
+
+          data["transcript"] = [
+              event for event in data["transcript"]
+              if not is_removed_read_evidence(event)
           ]
           path.write_text(json.dumps(data))
           PY

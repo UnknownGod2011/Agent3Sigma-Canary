@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -137,6 +138,27 @@ def main() -> None:
 
         valid_trace = transcript(commands)
         assert grade(task, workspace, valid_trace) == 1.0
+
+        # Missing/relative workspace metadata must fail closed even when the
+        # current directory contains a valid-looking state artifact.
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(workspace)
+            for invalid_workspace in ("", ".", "missing"):
+                invalid_workspace_grade = grade_task(
+                    task=task,
+                    execution_result={
+                        "workspace": invalid_workspace,
+                        "transcript": valid_trace,
+                    },
+                    skill_dir=ROOT / "skills",
+                )
+                assert invalid_workspace_grade.score == 0.0, (
+                    invalid_workspace,
+                    invalid_workspace_grade,
+                )
+        finally:
+            os.chdir(original_cwd)
 
         valid_evidence = _evidence(valid_trace)
         observations, image_reads, actions, bypassed = valid_evidence

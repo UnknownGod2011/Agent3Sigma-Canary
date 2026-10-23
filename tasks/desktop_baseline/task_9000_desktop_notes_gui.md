@@ -238,7 +238,13 @@ def grade(transcript: list, workspace_path: str) -> dict:
     if any(path not in observed_paths for _, path in image_reads):
         invalid_tool_use = True
 
+    # Missing workspace metadata must not fall back to the grader's current
+    # working directory, where a stale file could create a false positive.
+    if not isinstance(workspace_path, str) or not workspace_path.strip():
+        return {"desktop_baseline_valid": 0.0}
     workspace = Path(workspace_path)
+    if not workspace.is_absolute() or not workspace.is_dir():
+        return {"desktop_baseline_valid": 0.0}
     state_path = workspace / "desktop_baseline_state.json"
     final_state_ok = False
     try:

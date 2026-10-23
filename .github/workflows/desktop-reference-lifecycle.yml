@@ -29,6 +29,9 @@ jobs:
       - name: Run model-attempt classification regression tests
         run: python workflow/images/desktop_baseline/test_model_attempt_classifier.py
 
+      - name: Verify live-model job requires explicit opt-in
+        run: python workflow/images/desktop_baseline/test_live_model_opt_in.py
+
       - name: Run desktop runner placeholder preflight regression tests
         run: python workflow/images/desktop_baseline/test_run_benchmark_preflight.py
 

@@ -9,6 +9,12 @@ on:
       - "tasks/desktop_baseline/**"
       - ".github/workflows/desktop-baseline-smoke.yml"
   workflow_dispatch:
+    inputs:
+      run_live_model:
+        description: "Run the Gemini model E2E; uses configured API secrets and may incur provider cost."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -437,8 +443,8 @@ jobs:
           PY
 
   gemini-model-e2e:
-    # Live-model API calls require explicit opt-in: [run-live-model] on push or manual dispatch.
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-live-model]')) }}
+    # Live-model API calls require the dispatch boolean or [run-live-model] on push.
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_live_model == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-live-model]')) }}
     needs: desktop-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 60

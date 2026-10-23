@@ -20,12 +20,26 @@ def main() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     smoke = job_body(source, "desktop-smoke")
     model = job_body(source, "gemini-model-e2e")
-    expected = "${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-live-model]')) }}"
+    expected = "${{ (github.event_name == 'workflow_dispatch' && inputs.run_live_model == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-live-model]')) }}"
     condition = re.search(r"(?m)^    if:[ \\t]*(.+)$", model)
     assert condition and condition.group(1).strip() == expected, (
         "live-model evaluation must require manual dispatch or the explicit [run-live-model] marker",
         condition.group(1).strip() if condition else None,
     )
+    dispatch = re.search(r"(?ms)^  workflow_dispatch:\n(?P<body>(?:^[ \\t]+.*\n)*)", source)
+    assert dispatch, "workflow_dispatch must define a manual opt-in input"
+    input_block = re.search(
+        r"(?ms)^      run_live_model:\n(?P<body>(?:^[ \\t]+.*\n)*)",
+        dispatch.group("body"),
+    )
+    assert input_block, "workflow_dispatch must expose run_live_model"
+    assert re.search(r"(?m)^        type: boolean\\s*$", input_block.group("body")), (
+        "run_live_model must be a boolean input"
+    )
+    assert re.search(r"(?m)^        default: false\\s*$", input_block.group("body")), (
+        "manual model execution must default to disabled"
+    )
+
     assert "GEMINI_API_KEY_" not in smoke, "API key environment leaked into deterministic smoke job"
     assert "GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY }}" in model
     assert "Run evaluated Gemini desktop baseline with failover" in model

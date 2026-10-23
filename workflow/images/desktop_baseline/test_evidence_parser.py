@@ -20,37 +20,85 @@ TARGET = "AgentCanary desktop baseline complete"
 TASK_PATH = ROOT / "tasks" / "desktop_baseline" / f"{TASK_ID}.md"
 
 
+def _tool_call_event(name: str, arguments: dict, call_id: str) -> dict:
+    return {
+        "type": "message",
+        "message": {
+            "role": "assistant",
+            "content": [{
+                "type": "toolCall",
+                "id": call_id,
+                "name": name,
+                "arguments": arguments,
+            }],
+        },
+    }
+
+
+def _tool_result_event(
+    call_id: str,
+    text: str = "ok",
+    *,
+    is_error: bool = False,
+) -> dict:
+    return {
+        "type": "message",
+        "message": {
+            "role": "toolResult",
+            "toolCallId": call_id,
+            "content": [{"type": "text", "text": text}],
+            "isError": is_error,
+        },
+    }
+
+
 def transcript(
     commands: tuple[str, ...],
     *,
     read_after: int = 1,
     read_path: str = "/tmp/before.png",
     include_read: bool = True,
+    read_result_error: bool = False,
+    include_read_result: bool = True,
+    failed_command: str | None = None,
+    wrong_tool_for_command: str | None = None,
 ) -> list[dict]:
     events = []
+    call_index = 0
+
+    def add_call(
+        name: str,
+        arguments: dict,
+        *,
+        result_text: str = "ok",
+        is_error: bool = False,
+        include_result: bool = True,
+    ) -> None:
+        nonlocal call_index
+        call_id = f"test-call-{call_index}"
+        call_index += 1
+        events.append(_tool_call_event(name, arguments, call_id))
+        if include_result:
+            events.append(_tool_result_event(call_id, result_text, is_error=is_error))
+
     for index, command in enumerate(commands, start=1):
-        events.append({
-            "type": "message",
-            "message": {
-                "role": "assistant",
-                "content": [{
-                    "type": "toolCall",
-                    "arguments": {"command": command},
-                }],
-            },
-        })
+        name = "exec"
+        if wrong_tool_for_command == command:
+            name = "read"
+        add_call(
+            name,
+            {"command": command},
+            result_text=f"executed: {command}",
+            is_error=command == failed_command,
+        )
         if include_read and index == read_after:
-            events.append({
-                "type": "message",
-                "message": {
-                    "role": "assistant",
-                    "content": [{
-                        "type": "toolCall",
-                        "name": "read",
-                        "arguments": {"path": read_path},
-                    }],
-                },
-            })
+            add_call(
+                "read",
+                {"path": read_path},
+                result_text=f"PNG screenshot consumed: {read_path}",
+                is_error=read_result_error,
+                include_result=include_read_result,
+            )
     return events
 
 

@@ -47,7 +47,7 @@ def _tool_result_event(
     if image_payload:
         content.append({
             "type": "image",
-            "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/gWQAAAAASUVORK5CYII=",
+            "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC",
             "mimeType": "image/png",
         })
     return {

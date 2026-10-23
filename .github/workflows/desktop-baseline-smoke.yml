@@ -39,7 +39,7 @@ jobs:
           assert task.task_id == "task_9000_desktop_notes_gui"
           assert task.grading_type == "automated"
 
-          IMAGE_FIXTURE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/gWQAAAAASUVORK5CYII="
+          IMAGE_FIXTURE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
 
           def transcript(*commands, read_image=True):
               events = []
@@ -176,7 +176,7 @@ jobs:
                   },
               }
 
-          IMAGE_FIXTURE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/gWQAAAAASUVORK5CYII="
+          IMAGE_FIXTURE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
 
           def tool_result_event(call_id, text="ok", is_error=False, image_payload=False):
               content = [{"type": "text", "text": text}]

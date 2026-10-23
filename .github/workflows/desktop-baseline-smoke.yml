@@ -39,11 +39,13 @@ jobs:
           assert task.task_id == "task_9000_desktop_notes_gui"
           assert task.grading_type == "automated"
 
+          IMAGE_FIXTURE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/gWQAAAAASUVORK5CYII="
+
           def transcript(*commands, read_image=True):
               events = []
               call_index = 0
 
-              def add_call(name, arguments, result_text):
+              def add_call(name, arguments, result_text, image_payload=False):
                   nonlocal call_index
                   call_id = f"smoke-call-{call_index}"
                   call_index += 1
@@ -64,7 +66,10 @@ jobs:
                       "message": {
                           "role": "toolResult",
                           "toolCallId": call_id,
-                          "content": [{"type": "text", "text": result_text}],
+                          "content": ([{"type": "text", "text": result_text}] + (
+                              [{"type": "image", "data": IMAGE_FIXTURE, "mimeType": "image/png"}]
+                              if image_payload else []
+                          )),
                           "isError": False,
                       },
                   })
@@ -76,6 +81,7 @@ jobs:
                           "read",
                           {"path": "/tmp/before.png"},
                           "PNG screenshot consumed: /tmp/before.png",
+                          image_payload=True,
                       )
               return events
 
@@ -170,13 +176,18 @@ jobs:
                   },
               }
 
-          def tool_result_event(call_id, text="ok", is_error=False):
+          IMAGE_FIXTURE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/gWQAAAAASUVORK5CYII="
+
+          def tool_result_event(call_id, text="ok", is_error=False, image_payload=False):
+              content = [{"type": "text", "text": text}]
+              if image_payload:
+                  content.append({"type": "image", "data": IMAGE_FIXTURE, "mimeType": "image/png"})
               return {
                   "type": "message",
                   "message": {
                       "role": "toolResult",
                       "toolCallId": call_id,
-                      "content": [{"type": "text", "text": text}],
+                      "content": content,
                       "isError": is_error,
                   },
               }
@@ -190,7 +201,7 @@ jobs:
           def read_events(path, call_id):
               return [
                   tool_call_event("read", {"path": path}, call_id),
-                  tool_result_event(call_id, f"PNG screenshot consumed: {path}"),
+                  tool_result_event(call_id, f"PNG screenshot consumed: {path}", image_payload=True),
               ]
 
           target = "AgentCanary desktop baseline complete"
@@ -222,6 +233,7 @@ jobs:
           Path(sys.argv[1]).write_text(json.dumps(payload), encoding="utf-8")
           PY
           python workflow/images/desktop_baseline/verify_benchmark.py "$tmp"
+          cp "$artifact_dir/task_task_9000_desktop_notes_gui.json" "$tmp/valid-artifact.json"
           python - "$artifact_dir/task_task_9000_desktop_notes_gui.json" <<'PY'
           import json
           import sys
@@ -248,6 +260,7 @@ jobs:
             echo "error: verifier accepted screenshot capture without image consumption" >&2
             exit 1
           fi
+          cp "$tmp/valid-artifact.json" "$artifact_dir/task_task_9000_desktop_notes_gui.json"
           python - "$artifact_dir/task_task_9000_desktop_notes_gui.json" <<'PY'
           import json
           import sys
@@ -255,27 +268,6 @@ jobs:
           path = Path(sys.argv[1])
           data = json.loads(path.read_text())
           data["transcript"].extend([
-              {
-                  "type": "message",
-                  "message": {
-                      "role": "assistant",
-                      "content": [{
-                          "type": "toolCall",
-                          "id": "negative-read",
-                          "name": "read",
-                          "arguments": {"path": "/tmp/before.png"},
-                      }],
-                  },
-              },
-              {
-                  "type": "message",
-                  "message": {
-                      "role": "toolResult",
-                      "toolCallId": "negative-read",
-                      "content": [{"type": "text", "text": "PNG screenshot consumed"}],
-                      "isError": False,
-                  },
-              },
               {
                   "type": "message",
                   "message": {

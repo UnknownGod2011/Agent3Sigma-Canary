@@ -66,11 +66,26 @@ def grade(transcript: list, workspace_path: str) -> dict:
         if isinstance(call_id, str) and call_id:
             results.setdefault(call_id, []).append((event_index, message))
 
+    def has_image_payload(result_message: dict) -> bool:
+        content = result_message.get("content")
+        if not isinstance(content, list):
+            return False
+        return any(
+            isinstance(block, dict)
+            and block.get("type") == "image"
+            and isinstance(block.get("data"), str)
+            and bool(block["data"].strip())
+            and isinstance(block.get("mimeType"), str)
+            and block["mimeType"].lower().startswith("image/")
+            for block in content
+        )
+
     def successful_result(
         call_id: str,
         call_event_index: int,
         *,
         require_content: bool = False,
+        require_image: bool = False,
     ) -> bool:
         if not isinstance(call_id, str) or not call_id:
             return False
@@ -80,6 +95,8 @@ def grade(transcript: list, workspace_path: str) -> dict:
         result_event_index, result_message = matches[0]
         if result_event_index <= call_event_index or result_message.get("isError") is not False:
             return False
+        if require_image:
+            return has_image_payload(result_message)
         return not require_content or bool(result_message.get("content"))
 
     def command_segments(command: str) -> list[list[str]]:
@@ -221,7 +238,7 @@ def grade(transcript: list, workspace_path: str) -> dict:
                     or not isinstance(path, str)
                     or not re.fullmatch(r"/tmp/[A-Za-z0-9._/-]+\.png", posixpath.normpath(path))
                     or ".." in path.split("/")
-                    or not successful_result(call_id, event_index, require_content=True)
+                    or not successful_result(call_id, event_index, require_image=True)
                 ):
                     invalid_tool_use = True
                     continue

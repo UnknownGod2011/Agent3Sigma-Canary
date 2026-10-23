@@ -41,13 +41,21 @@ def _tool_result_event(
     text: str = "ok",
     *,
     is_error: bool = False,
+    image_payload: bool = False,
 ) -> dict:
+    content = [{"type": "text", "text": text}]
+    if image_payload:
+        content.append({
+            "type": "image",
+            "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/gWQAAAAASUVORK5CYII=",
+            "mimeType": "image/png",
+        })
     return {
         "type": "message",
         "message": {
             "role": "toolResult",
             "toolCallId": call_id,
-            "content": [{"type": "text", "text": text}],
+            "content": content,
             "isError": is_error,
         },
     }
@@ -61,6 +69,7 @@ def transcript(
     include_read: bool = True,
     read_result_error: bool = False,
     include_read_result: bool = True,
+    read_image_payload: bool = True,
     failed_command: str | None = None,
     wrong_tool_for_command: str | None = None,
 ) -> list[dict]:
@@ -74,13 +83,14 @@ def transcript(
         result_text: str = "ok",
         is_error: bool = False,
         include_result: bool = True,
+        image_payload: bool = False,
     ) -> None:
         nonlocal call_index
         call_id = f"test-call-{call_index}"
         call_index += 1
         events.append(_tool_call_event(name, arguments, call_id))
         if include_result:
-            events.append(_tool_result_event(call_id, result_text, is_error=is_error))
+            events.append(_tool_result_event(call_id, result_text, is_error=is_error, image_payload=image_payload))
 
     for index, command in enumerate(commands, start=1):
         name = "exec"
@@ -99,6 +109,7 @@ def transcript(
                 result_text=f"PNG screenshot consumed: {read_path}",
                 is_error=read_result_error,
                 include_result=include_read_result,
+                image_payload=read_image_payload,
             )
     return events
 
@@ -183,6 +194,10 @@ def main() -> None:
 
         no_read = transcript(commands, include_read=False)
         assert grade(task, workspace, no_read) == 0.0
+
+        text_only_read = transcript(commands, read_image_payload=False)
+        assert grade(task, workspace, text_only_read) == 0.0
+        assert _evidence(text_only_read)[3]
 
         failed_read = transcript(commands, read_result_error=True)
         assert grade(task, workspace, failed_read) == 0.0

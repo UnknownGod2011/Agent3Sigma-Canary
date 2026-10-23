@@ -13,6 +13,7 @@ or source code.  Success must come from the visible GUI and its Save callback.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import shutil
 import struct
@@ -86,13 +87,26 @@ def _tool_call(name: str, arguments: dict[str, Any], call_id: str) -> dict[str, 
     )
 
 
-def _tool_result(call_id: str, text: str, *, is_error: bool = False) -> dict[str, Any]:
+def _tool_result(
+    call_id: str,
+    text: str,
+    *,
+    image_path: Path | None = None,
+    is_error: bool = False,
+) -> dict[str, Any]:
+    content: list[dict[str, Any]] = [{"type": "text", "text": text}]
+    if image_path is not None and not is_error:
+        content.append({
+            "type": "image",
+            "data": base64.b64encode(image_path.read_bytes()).decode("ascii"),
+            "mimeType": "image/png",
+        })
     return {
         "type": "message",
         "message": {
             "role": "toolResult",
             "toolCallId": call_id,
-            "content": [{"type": "text", "text": text}],
+            "content": content,
             "isError": is_error,
         },
     }
@@ -103,6 +117,8 @@ def _record_tool(
     name: str,
     arguments: dict[str, Any],
     runner,
+    *,
+    image_path: Path | None = None,
 ) -> Any:
     """Record a tool call and its correlated result, including failures."""
     call_id = f"desktop-reference-{len(events):04d}"
@@ -112,7 +128,7 @@ def _record_tool(
     except Exception as exc:
         events.append(_tool_result(call_id, str(exc), is_error=True))
         raise
-    events.append(_tool_result(call_id, str(result or "ok"), is_error=False))
+    events.append(_tool_result(call_id, str(result or "ok"), image_path=image_path, is_error=False))
     return result
 
 
@@ -200,6 +216,7 @@ def cmd_agent(args: argparse.Namespace) -> int:
         "read",
         {"path": str(SCREENSHOT_PATH)},
         consume_screenshot,
+        image_path=SCREENSHOT_PATH,
     )
 
     # 3. Drive only the public GUI surface.  These coordinates are stable by

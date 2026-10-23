@@ -120,7 +120,7 @@ def _valid_png_payload(payload: str) -> bool:
     if (
         not image_bytes
         or len(image_bytes) > 8 * 1024 * 1024
-        or image_bytes[:8] != b"\\x89PNG\\r\\n\\x1a\\n"
+        or image_bytes[:8] != b"\x89PNG\r\n\x1a\n"
     ):
         return False
 

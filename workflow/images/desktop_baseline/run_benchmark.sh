@@ -24,7 +24,7 @@ source env.sh
 
 # Reject the example/placeholder configuration rather than accidentally
 # reporting a benchmark attempt that never had a usable evaluated model.
-if grep -Eq 'your-api-key-here|sk-your-key-here|sk-ant-your-key-here|api\\.example\\.com' workflow/images/official/openclaw.json; then
+if grep -Eq 'your-api-key-here|sk-your-key-here|sk-ant-your-key-here|api\.example\.com' workflow/images/official/openclaw.json; then
   echo "error: generated OpenClaw config still contains example credentials/endpoints" >&2
   exit 2
 fi

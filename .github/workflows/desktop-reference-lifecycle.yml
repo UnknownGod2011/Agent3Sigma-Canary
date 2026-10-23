@@ -29,6 +29,9 @@ jobs:
       - name: Run model-attempt classification regression tests
         run: python workflow/images/desktop_baseline/test_model_attempt_classifier.py
 
+      - name: Run desktop runner placeholder preflight regression tests
+        run: python workflow/images/desktop_baseline/test_run_benchmark_preflight.py
+
       - name: Prepare desktop baseline image context
         run: |
           set -euo pipefail

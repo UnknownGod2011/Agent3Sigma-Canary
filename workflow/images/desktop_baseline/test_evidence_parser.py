@@ -2,6 +2,7 @@
 """Regression tests for desktop trajectory evidence used by the baseline gate."""
 from __future__ import annotations
 
+import base64
 import json
 import sys
 import tempfile
@@ -114,6 +115,21 @@ def transcript(
     return events
 
 
+def replace_image_payload(trace: list[dict], payload: str, mime_type: str | None = None) -> None:
+    found = False
+    for event in trace:
+        message = event.get("message", {})
+        if message.get("role") != "toolResult":
+            continue
+        for block in message.get("content", []):
+            if isinstance(block, dict) and block.get("type") == "image":
+                block["data"] = payload
+                if mime_type is not None:
+                    block["mimeType"] = mime_type
+                found = True
+    assert found, "test trace must contain an image content block"
+
+
 def grade(task, workspace: Path, trace: list[dict]) -> float:
     result = grade_task(
         task=task,
@@ -198,6 +214,36 @@ def main() -> None:
         text_only_read = transcript(commands, read_image_payload=False)
         assert grade(task, workspace, text_only_read) == 0.0
         assert _evidence(text_only_read)[3]
+
+        # A non-empty image block must contain real, structurally valid PNG bytes.
+        malformed_base64 = transcript(commands)
+        replace_image_payload(malformed_base64, "not-base64!")
+        assert grade(task, workspace, malformed_base64) == 0.0
+        assert _evidence(malformed_base64)[3]
+
+        valid_base64_non_png = transcript(commands)
+        replace_image_payload(valid_base64_non_png, "bm90IGEgcG5n")  # base64("not a png")
+        assert grade(task, workspace, valid_base64_non_png) == 0.0
+        assert _evidence(valid_base64_non_png)[3]
+
+        invalid_crc = transcript(commands)
+        png_bytes = bytearray(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC",
+            validate=True,
+        ))
+        png_bytes[53] ^= 1  # corrupt the IDAT CRC while preserving the PNG signature/header
+        replace_image_payload(invalid_crc, base64.b64encode(png_bytes).decode("ascii"))
+        assert grade(task, workspace, invalid_crc) == 0.0
+        assert _evidence(invalid_crc)[3]
+
+        wrong_image_mime = transcript(commands)
+        replace_image_payload(
+            wrong_image_mime,
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC",
+            mime_type="image/jpeg",
+        )
+        assert grade(task, workspace, wrong_image_mime) == 0.0
+        assert _evidence(wrong_image_mime)[3]
 
         failed_read = transcript(commands, read_result_error=True)
         assert grade(task, workspace, failed_read) == 0.0

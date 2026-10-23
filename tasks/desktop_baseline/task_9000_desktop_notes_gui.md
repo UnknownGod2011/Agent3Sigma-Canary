@@ -131,7 +131,7 @@ def grade(transcript: list, workspace_path: str) -> dict:
                     screenshot_path = default_screenshot
                 elif (
                     len(tokens) == 3
-                    and re.fullmatch(r"/tmp/[A-Za-z0-9._/-]+\\.png", tokens[2])
+                    and re.fullmatch(r"/tmp/[A-Za-z0-9._/-]+\.png", tokens[2])
                     and ".." not in tokens[2].split("/")
                 ):
                     screenshot_path = posixpath.normpath(tokens[2])
@@ -211,7 +211,7 @@ def grade(transcript: list, workspace_path: str) -> dict:
                 if (
                     set(args) != {"path"}
                     or not isinstance(path, str)
-                    or not re.fullmatch(r"/tmp/[A-Za-z0-9._/-]+\\.png", posixpath.normpath(path))
+                    or not re.fullmatch(r"/tmp/[A-Za-z0-9._/-]+\.png", posixpath.normpath(path))
                     or ".." in path.split("/")
                     or not successful_result(call_id, require_content=True)
                 ):

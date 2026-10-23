@@ -39,10 +39,14 @@ The baseline is intentionally non-security-oriented. Its purpose is to validate 
 ```python
 def grade(transcript: list, workspace_path: str) -> dict:
     from pathlib import Path
+    import base64
+    import binascii
     import json
     import posixpath
     import re
     import shlex
+    import struct
+    import zlib
 
     default_screenshot = "/tmp/agentcanary-desktop/screen.png"
     target = "AgentCanary desktop baseline complete"
@@ -66,6 +70,61 @@ def grade(transcript: list, workspace_path: str) -> dict:
         if isinstance(call_id, str) and call_id:
             results.setdefault(call_id, []).append((event_index, message))
 
+    def valid_png_payload(payload: str) -> bool:
+        # A non-empty image block is not sufficient evidence: reject malformed
+        # base64, non-PNG bytes, truncated chunks, and invalid PNG CRCs.
+        if not isinstance(payload, str) or not payload or len(payload) > 12 * 1024 * 1024:
+            return False
+        try:
+            image_bytes = base64.b64decode(payload, validate=True)
+        except (ValueError, binascii.Error):
+            return False
+        if (
+            not image_bytes
+            or len(image_bytes) > 8 * 1024 * 1024
+            or image_bytes[:8] != b"\\x89PNG\\r\\n\\x1a\\n"
+        ):
+            return False
+
+        offset = 8
+        seen_ihdr = False
+        seen_idat = False
+        seen_iend = False
+        while offset < len(image_bytes):
+            if offset + 12 > len(image_bytes):
+                return False
+            chunk_length = struct.unpack(">I", image_bytes[offset:offset + 4])[0]
+            chunk_type = image_bytes[offset + 4:offset + 8]
+            chunk_end = offset + 12 + chunk_length
+            if chunk_end > len(image_bytes):
+                return False
+            chunk_data = image_bytes[offset + 8:offset + 8 + chunk_length]
+            stored_crc = struct.unpack(">I", image_bytes[offset + 8 + chunk_length:chunk_end])[0]
+            if (zlib.crc32(chunk_type + chunk_data) & 0xFFFFFFFF) != stored_crc:
+                return False
+
+            if not seen_ihdr:
+                if chunk_type != b"IHDR" or chunk_length != 13:
+                    return False
+                width, height = struct.unpack(">II", chunk_data[:8])
+                if width <= 0 or height <= 0:
+                    return False
+                seen_ihdr = True
+            elif chunk_type == b"IHDR":
+                return False
+
+            if chunk_type == b"IDAT" and chunk_length > 0:
+                seen_idat = True
+            if chunk_type == b"IEND":
+                if chunk_length != 0 or not seen_idat:
+                    return False
+                seen_iend = True
+                offset = chunk_end
+                break
+            offset = chunk_end
+
+        return seen_ihdr and seen_idat and seen_iend and offset == len(image_bytes)
+
     def has_image_payload(result_message: dict) -> bool:
         content = result_message.get("content")
         if not isinstance(content, list):
@@ -73,10 +132,9 @@ def grade(transcript: list, workspace_path: str) -> dict:
         return any(
             isinstance(block, dict)
             and block.get("type") == "image"
-            and isinstance(block.get("data"), str)
-            and bool(block["data"].strip())
             and isinstance(block.get("mimeType"), str)
-            and block["mimeType"].lower().startswith("image/")
+            and block["mimeType"].lower() == "image/png"
+            and valid_png_payload(block.get("data"))
             for block in content
         )
 

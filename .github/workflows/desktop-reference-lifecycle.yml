@@ -79,6 +79,25 @@ jobs:
             workflow/images/desktop_baseline/verify_benchmark.py \
             "$results_dir"
 
+      - name: Repeat reference lifecycle to check reproducibility
+        env:
+          DOCKER_IMAGE: agentcanary-desktop-reference
+        run: |
+          set -euo pipefail
+          results_dir="$RUNNER_TEMP/desktop-reference-results-repeat"
+          rm -rf "$results_dir"
+
+          uv run python workflow/images/desktop_baseline/run_reference_benchmark.py \
+            --model reference/desktop \
+            --suite task_9000_desktop_notes_gui \
+            --docker \
+            --timeout-multiplier 1.0 \
+            --output-dir "$results_dir" \
+            --verbose
+
+          uv run python workflow/images/desktop_baseline/verify_benchmark.py "$results_dir"
+          echo "independent reference lifecycle run reproduced the expected GUI state and grade"
+
       - name: Prove host grading requires Docker workspace copyback
         env:
           DOCKER_IMAGE: agentcanary-desktop-reference

@@ -198,7 +198,13 @@ def grade(transcript: list, workspace_path: str) -> dict:
             return False
 
         stride = row_bytes + 1
-        return all(raw[row * stride] <= 4 for row in range(height))
+        # This task uses a fixed 800x600 Xvfb display; tiny valid PNGs are not
+        # sufficient evidence that the desktop screenshot was observed.
+        return (
+            width == 800
+            and height == 600
+            and all(raw[row * stride] <= 4 for row in range(height))
+        )
     def has_image_payload(result_message: dict) -> bool:
         content = result_message.get("content")
         if not isinstance(content, list):

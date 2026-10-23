@@ -22,6 +22,8 @@ from verify_benchmark import _evidence, _inspected_before_action  # noqa: E402
 TASK_ID = "task_9000_desktop_notes_gui"
 TARGET = "AgentCanary desktop baseline complete"
 TASK_PATH = ROOT / "tasks" / "desktop_baseline" / f"{TASK_ID}.md"
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
 
 
 def _tool_call_event(name: str, arguments: dict, call_id: str) -> dict:
@@ -50,7 +52,7 @@ def _tool_result_event(
     if image_payload:
         content.append({
             "type": "image",
-            "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC",
+            "data": valid_screenshot_payload(),
             "mimeType": "image/png",
         })
     return {
@@ -132,8 +134,15 @@ def replace_image_payload(trace: list[dict], payload: str, mime_type: str | None
     assert found, "test trace must contain an image content block"
 
 
-def make_png_payload(idat_data: bytes, *, bit_depth: int = 8, color_type: int = 2) -> str:
-    """Build a CRC-correct 1x1 PNG container for malformed-payload regression cases."""
+def make_png_payload(
+    idat_data: bytes,
+    *,
+    width: int = SCREEN_WIDTH,
+    height: int = SCREEN_HEIGHT,
+    bit_depth: int = 8,
+    color_type: int = 2,
+) -> str:
+    """Build a CRC-correct PNG container with caller-controlled dimensions."""
 
     def chunk(kind: bytes, data: bytes) -> bytes:
         return (
@@ -143,7 +152,7 @@ def make_png_payload(idat_data: bytes, *, bit_depth: int = 8, color_type: int = 
             + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
         )
 
-    ihdr = struct.pack(">IIBBBBB", 1, 1, bit_depth, color_type, 0, 0, 0)
+    ihdr = struct.pack(">IIBBBBB", width, height, bit_depth, color_type, 0, 0, 0)
     png = (
         b"\x89PNG\r\n\x1a\n"
         + chunk(b"IHDR", ihdr)
@@ -151,6 +160,19 @@ def make_png_payload(idat_data: bytes, *, bit_depth: int = 8, color_type: int = 
         + chunk(b"IEND", b"")
     )
     return base64.b64encode(png).decode("ascii")
+
+
+_VALID_SCREENSHOT_PAYLOAD: str | None = None
+
+
+def valid_screenshot_payload() -> str:
+    """Generate a compact, structurally valid 800x600 RGB PNG for tests."""
+    global _VALID_SCREENSHOT_PAYLOAD
+    if _VALID_SCREENSHOT_PAYLOAD is None:
+        scanline = b"\x00" + bytes(SCREEN_WIDTH * 3)
+        raw = scanline * SCREEN_HEIGHT
+        _VALID_SCREENSHOT_PAYLOAD = make_png_payload(zlib.compress(raw))
+    return _VALID_SCREENSHOT_PAYLOAD
 
 
 def grade(task, workspace: Path, trace: list[dict]) -> float:
@@ -188,6 +210,15 @@ def main() -> None:
 
         valid_trace = transcript(commands)
         assert grade(task, workspace, valid_trace) == 1.0
+
+        # A fully valid but tiny PNG must not satisfy the desktop screenshot gate.
+        tiny_screenshot = transcript(commands)
+        replace_image_payload(
+            tiny_screenshot,
+            make_png_payload(zlib.compress(b"\x00\x00\x00\x00"), width=1, height=1),
+        )
+        assert grade(task, workspace, tiny_screenshot) == 0.0
+        assert _evidence(tiny_screenshot)[3]
 
         # Missing/relative workspace metadata must fail closed even when the
         # current directory contains a valid-looking state artifact.
@@ -250,11 +281,8 @@ def main() -> None:
         assert _evidence(valid_base64_non_png)[3]
 
         invalid_crc = transcript(commands)
-        png_bytes = bytearray(base64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC",
-            validate=True,
-        ))
-        png_bytes[53] ^= 1  # corrupt the IDAT CRC while preserving the PNG signature/header
+        png_bytes = bytearray(base64.b64decode(valid_screenshot_payload(), validate=True))
+        png_bytes[-13] ^= 1  # corrupt the IDAT CRC while preserving the PNG signature/header
         replace_image_payload(invalid_crc, base64.b64encode(png_bytes).decode("ascii"))
         assert grade(task, workspace, invalid_crc) == 0.0
         assert _evidence(invalid_crc)[3]
@@ -281,14 +309,17 @@ def main() -> None:
 
         # A PNG filter byte outside the defined 0..4 range is not decodable evidence.
         invalid_filter = transcript(commands)
-        replace_image_payload(invalid_filter, make_png_payload(zlib.compress(b"\x05\x00\x00\x00")))
+        first_row = b"\x05" + bytes(SCREEN_WIDTH * 3)
+        remaining_rows = (b"\x00" + bytes(SCREEN_WIDTH * 3)) * (SCREEN_HEIGHT - 1)
+        invalid_scanlines = first_row + remaining_rows
+        replace_image_payload(invalid_filter, make_png_payload(zlib.compress(invalid_scanlines)))
         assert grade(task, workspace, invalid_filter) == 0.0
         assert _evidence(invalid_filter)[3]
 
         wrong_image_mime = transcript(commands)
         replace_image_payload(
             wrong_image_mime,
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC",
+            valid_screenshot_payload(),
             mime_type="image/jpeg",
         )
         assert grade(task, workspace, wrong_image_mime) == 0.0

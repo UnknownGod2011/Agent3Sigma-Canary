@@ -71,8 +71,10 @@ def _inspect_png(path: Path) -> tuple[int, int, int]:
     if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
         raise RuntimeError("desktop observation did not produce a valid PNG")
     width, height = struct.unpack(">II", data[16:24])
-    if width <= 0 or height <= 0:
-        raise RuntimeError("desktop observation has invalid dimensions")
+    if (width, height) != (800, 600):
+        raise RuntimeError(
+            f"desktop observation must match the fixed 800x600 display, got {width}x{height}"
+        )
     return width, height, len(data)
 
 

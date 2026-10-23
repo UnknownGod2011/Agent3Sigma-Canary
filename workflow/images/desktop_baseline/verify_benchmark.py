@@ -237,7 +237,13 @@ def _valid_png_payload(payload: str) -> bool:
         return False
 
     stride = row_bytes + 1
-    return all(raw[row * stride] <= 4 for row in range(height))
+    # The baseline image is pinned to an 800x600 Xvfb display. Reject tiny
+    # but structurally valid PNGs so they cannot stand in for desktop evidence.
+    return (
+        width == 800
+        and height == 600
+        and all(raw[row * stride] <= 4 for row in range(height))
+    )
 
 def _has_image_payload(result_message: dict) -> bool:
     content = result_message.get("content")

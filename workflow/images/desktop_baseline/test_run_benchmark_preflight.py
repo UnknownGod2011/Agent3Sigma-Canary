@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "workflow" / "images" / "desktop_baseline" / "run_benchmark.sh"
 SOURCE = SCRIPT.read_text(encoding="utf-8")
 MATCH = re.search(
-    r"grep\\s+-Eq\\s+'([^']+)'\\s+workflow/images/official/openclaw\\.json",
+    r"grep\s+-Eq\s+'([^']+)'\s+workflow/images/official/openclaw\.json",
     SOURCE,
 )
 assert MATCH, "could not locate the live-runner placeholder guard"
@@ -20,7 +20,7 @@ PATTERN = MATCH.group(1)
 def is_placeholder(value: str) -> bool:
     result = subprocess.run(
         ["grep", "-Eq", PATTERN],
-        input=value + "\\n",
+        input=value + "\n",
         text=True,
         capture_output=True,
         check=False,

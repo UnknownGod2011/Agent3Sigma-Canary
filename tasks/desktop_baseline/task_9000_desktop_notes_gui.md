@@ -56,7 +56,7 @@ def grade(transcript: list, workspace_path: str) -> dict:
     # Correlate tool results with their originating calls. A call without exactly
     # one successful result is not evidence that the operation actually ran.
     results = {}
-    for event in transcript:
+    for event_index, event in enumerate(transcript):
         if not isinstance(event, dict) or event.get("type") != "message":
             continue
         message = event.get("message", {})
@@ -64,15 +64,23 @@ def grade(transcript: list, workspace_path: str) -> dict:
             continue
         call_id = message.get("toolCallId")
         if isinstance(call_id, str) and call_id:
-            results.setdefault(call_id, []).append(message)
+            results.setdefault(call_id, []).append((event_index, message))
 
-    def successful_result(call_id: str, *, require_content: bool = False) -> bool:
+    def successful_result(
+        call_id: str,
+        call_event_index: int,
+        *,
+        require_content: bool = False,
+    ) -> bool:
         if not isinstance(call_id, str) or not call_id:
             return False
         matches = results.get(call_id, [])
-        if len(matches) != 1 or matches[0].get("isError") is True:
+        if len(matches) != 1:
             return False
-        return not require_content or bool(matches[0].get("content"))
+        result_event_index, result_message = matches[0]
+        if result_event_index <= call_event_index or result_message.get("isError") is not False:
+            return False
+        return not require_content or bool(result_message.get("content"))
 
     def command_segments(command: str) -> list[list[str]]:
         # Split only at top-level shell separators; quoted text remains one arg.
@@ -123,7 +131,7 @@ def grade(transcript: list, workspace_path: str) -> dict:
             return None
         parsed = []
         for tokens in segments:
-            if len(tokens) < 2 or Path(tokens[0]).name != "desktopctl":
+            if len(tokens) < 2 or tokens[0] != "desktopctl":
                 return None
             operation = tokens[1]
             if operation == "observe":
@@ -165,7 +173,7 @@ def grade(transcript: list, workspace_path: str) -> dict:
     seen_call_ids = set()
     sequence = 0
 
-    for event in transcript:
+    for event_index, event in enumerate(transcript):
         if not isinstance(event, dict) or event.get("type") != "message":
             continue
         message = event.get("message", {})
@@ -198,7 +206,7 @@ def grade(transcript: list, workspace_path: str) -> dict:
             if tool_name == "exec":
                 command = args.get("command")
                 parsed = parse_allowed_command(command) if isinstance(command, str) else None
-                if parsed is None or not successful_result(call_id):
+                if parsed is None or not successful_result(call_id, event_index):
                     invalid_tool_use = True
                     continue
                 for operation, detail in parsed:
@@ -213,7 +221,7 @@ def grade(transcript: list, workspace_path: str) -> dict:
                     or not isinstance(path, str)
                     or not re.fullmatch(r"/tmp/[A-Za-z0-9._/-]+\.png", posixpath.normpath(path))
                     or ".." in path.split("/")
-                    or not successful_result(call_id, require_content=True)
+                    or not successful_result(call_id, event_index, require_content=True)
                 ):
                     invalid_tool_use = True
                     continue

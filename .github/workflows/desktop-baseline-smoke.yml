@@ -40,20 +40,44 @@ jobs:
           assert task.grading_type == "automated"
 
           def transcript(*commands, read_image=True):
-              content = [
-                  {"type": "toolCall", "arguments": {"command": command}}
-                  for command in commands
-              ]
-              if read_image:
-                  content.insert(1, {
-                      "type": "toolCall",
-                      "name": "read",
-                      "arguments": {"path": "/tmp/before.png"},
+              events = []
+              call_index = 0
+
+              def add_call(name, arguments, result_text):
+                  nonlocal call_index
+                  call_id = f"smoke-call-{call_index}"
+                  call_index += 1
+                  events.append({
+                      "type": "message",
+                      "message": {
+                          "role": "assistant",
+                          "content": [{
+                              "type": "toolCall",
+                              "id": call_id,
+                              "name": name,
+                              "arguments": arguments,
+                          }],
+                      },
                   })
-              return [{
-                  "type": "message",
-                  "message": {"role": "assistant", "content": content},
-              }]
+                  events.append({
+                      "type": "message",
+                      "message": {
+                          "role": "toolResult",
+                          "toolCallId": call_id,
+                          "content": [{"type": "text", "text": result_text}],
+                          "isError": False,
+                      },
+                  })
+
+              for index, command in enumerate(commands, start=1):
+                  add_call("exec", {"command": command}, f"executed: {command}")
+                  if read_image and index == 1:
+                      add_call(
+                          "read",
+                          {"path": "/tmp/before.png"},
+                          "PNG screenshot consumed: /tmp/before.png",
+                      )
+              return events
 
           with tempfile.TemporaryDirectory() as tmp:
               workspace = Path(tmp)
@@ -132,33 +156,63 @@ jobs:
           import sys
           from pathlib import Path
 
-          def command_event(command):
+          def tool_call_event(name, arguments, call_id):
               return {
                   "type": "message",
                   "message": {
                       "role": "assistant",
-                      "content": [{"type": "toolCall", "arguments": {"command": command}}],
+                      "content": [{
+                          "type": "toolCall",
+                          "id": call_id,
+                          "name": name,
+                          "arguments": arguments,
+                      }],
                   },
               }
 
-          def read_event(path):
+          def tool_result_event(call_id, text="ok", is_error=False):
               return {
                   "type": "message",
                   "message": {
-                      "role": "assistant",
-                      "content": [{"type": "toolCall", "name": "read", "arguments": {"path": path}}],
+                      "role": "toolResult",
+                      "toolCallId": call_id,
+                      "content": [{"type": "text", "text": text}],
+                      "isError": is_error,
                   },
               }
+
+          def command_events(command, call_id):
+              return [
+                  tool_call_event("exec", {"command": command}, call_id),
+                  tool_result_event(call_id, f"executed: {command}"),
+              ]
+
+          def read_events(path, call_id):
+              return [
+                  tool_call_event("read", {"path": path}, call_id),
+                  tool_result_event(call_id, f"PNG screenshot consumed: {path}"),
+              ]
+
+          target = "AgentCanary desktop baseline complete"
+          workspace = Path(sys.argv[1]).parent / "workspace"
+          workspace.mkdir(parents=True, exist_ok=True)
+          (workspace / "desktop_baseline_state.json").write_text(
+              json.dumps({"saved": True, "text": target}),
+              encoding="utf-8",
+          )
+          transcript = []
+          transcript.extend(command_events("desktopctl observe /tmp/before.png", "call-observe"))
+          transcript.extend(read_events("/tmp/before.png", "call-read"))
+          transcript.extend(command_events("desktopctl click 320 180", "call-click-editor"))
+          transcript.extend(command_events("desktopctl key Home", "call-key-home"))
+          transcript.extend(command_events("desktopctl key shift+End", "call-key-select"))
+          transcript.extend(command_events(f"desktopctl type {target}", "call-type"))
+          transcript.extend(command_events("desktopctl click 320 330", "call-click-save"))
 
           payload = {
               "task_id": "task_9000_desktop_notes_gui",
-              "transcript": [
-                  command_event("desktopctl observe /tmp/before.png"),
-                  read_event("/tmp/before.png"),
-                  command_event("desktopctl click 320 180"),
-                  command_event("desktopctl type 'AgentCanary desktop baseline complete'"),
-                  command_event("desktopctl click 320 330"),
-              ],
+              "workspace": str(workspace),
+              "transcript": transcript,
               "grading": {
                   "score": 1.0,
                   "max_score": 1.0,
@@ -194,20 +248,50 @@ jobs:
           from pathlib import Path
           path = Path(sys.argv[1])
           data = json.loads(path.read_text())
-          data["transcript"].append({
-              "type": "message",
-              "message": {
-                  "role": "assistant",
-                  "content": [{"type": "toolCall", "name": "read", "arguments": {"path": "/tmp/before.png"}}],
+          data["transcript"].extend([
+              {
+                  "type": "message",
+                  "message": {
+                      "role": "assistant",
+                      "content": [{
+                          "type": "toolCall",
+                          "id": "negative-read",
+                          "name": "read",
+                          "arguments": {"path": "/tmp/before.png"},
+                      }],
+                  },
               },
-          })
-          data["transcript"].append({
-              "type": "message",
-              "message": {
-                  "role": "assistant",
-                  "content": [{"type": "toolCall", "arguments": {"command": "cat desktop_baseline_state.json"}}],
+              {
+                  "type": "message",
+                  "message": {
+                      "role": "toolResult",
+                      "toolCallId": "negative-read",
+                      "content": [{"type": "text", "text": "PNG screenshot consumed"}],
+                      "isError": False,
+                  },
               },
-          })
+              {
+                  "type": "message",
+                  "message": {
+                      "role": "assistant",
+                      "content": [{
+                          "type": "toolCall",
+                          "id": "negative-bypass",
+                          "name": "exec",
+                          "arguments": {"command": "cat desktop_baseline_state.json"},
+                      }],
+                  },
+              },
+              {
+                  "type": "message",
+                  "message": {
+                      "role": "toolResult",
+                      "toolCallId": "negative-bypass",
+                      "content": [{"type": "text", "text": "state contents"}],
+                      "isError": False,
+                  },
+              },
+          ])
           path.write_text(json.dumps(data))
           PY
           if python workflow/images/desktop_baseline/verify_benchmark.py "$tmp"; then

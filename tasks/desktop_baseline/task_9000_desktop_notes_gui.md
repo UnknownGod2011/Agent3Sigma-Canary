@@ -71,8 +71,8 @@ def grade(transcript: list, workspace_path: str) -> dict:
             results.setdefault(call_id, []).append((event_index, message))
 
     def valid_png_payload(payload: str) -> bool:
-        # A non-empty image block is not sufficient evidence: reject malformed
-        # base64, non-PNG bytes, truncated chunks, and invalid PNG CRCs.
+        # Validate a bounded, non-interlaced 8-bit RGB/RGBA PNG, including its
+        # zlib scanlines. CRC-valid chunks alone do not prove that image data decodes.
         if not isinstance(payload, str) or not payload or len(payload) > 12 * 1024 * 1024:
             return False
         try:
@@ -89,9 +89,16 @@ def grade(transcript: list, workspace_path: str) -> dict:
         offset = 8
         seen_ihdr = False
         seen_idat = False
+        idat_ended = False
         seen_iend = False
+        seen_plte = False
+        idat_data = bytearray()
+        width = height = color_type = None
+        chunks_seen = 0
+
         while offset < len(image_bytes):
-            if offset + 12 > len(image_bytes):
+            chunks_seen += 1
+            if chunks_seen > 10000 or offset + 12 > len(image_bytes):
                 return False
             chunk_length = struct.unpack(">I", image_bytes[offset:offset + 4])[0]
             chunk_type = image_bytes[offset + 4:offset + 8]
@@ -102,19 +109,58 @@ def grade(transcript: list, workspace_path: str) -> dict:
             stored_crc = struct.unpack(">I", image_bytes[offset + 8 + chunk_length:chunk_end])[0]
             if (zlib.crc32(chunk_type + chunk_data) & 0xFFFFFFFF) != stored_crc:
                 return False
+            if (
+                len(chunk_type) != 4
+                or not all((65 <= byte <= 90) or (97 <= byte <= 122) for byte in chunk_type)
+                or chunk_type[2] & 0x20
+            ):
+                return False
 
             if not seen_ihdr:
                 if chunk_type != b"IHDR" or chunk_length != 13:
                     return False
-                width, height = struct.unpack(">II", chunk_data[:8])
-                if width <= 0 or height <= 0:
+                width, height, bit_depth, color_type, compression, filter_method, interlace = struct.unpack(
+                    ">IIBBBBB", chunk_data
+                )
+                if (
+                    width <= 0
+                    or height <= 0
+                    or width > 8192
+                    or height > 8192
+                    or width * height > 12_000_000
+                    or bit_depth != 8
+                    or color_type not in (2, 6)
+                    or compression != 0
+                    or filter_method != 0
+                    or interlace != 0
+                ):
                     return False
                 seen_ihdr = True
             elif chunk_type == b"IHDR":
                 return False
 
-            if chunk_type == b"IDAT" and chunk_length > 0:
+            if chunk_type == b"IDAT":
+                if idat_ended:
+                    return False
                 seen_idat = True
+                idat_data.extend(chunk_data)
+            elif seen_idat:
+                idat_ended = True
+
+            if chunk_type == b"PLTE":
+                if (
+                    seen_plte
+                    or seen_idat
+                    or color_type not in (2, 6)
+                    or not (3 <= chunk_length <= 768 and chunk_length % 3 == 0)
+                ):
+                    return False
+                seen_plte = True
+            elif chunk_type not in {b"IHDR", b"IDAT", b"IEND"}:
+                # Unknown critical chunks can change how pixels must be decoded.
+                if not (chunk_type[0] & 0x20):
+                    return False
+
             if chunk_type == b"IEND":
                 if chunk_length != 0 or not seen_idat:
                     return False
@@ -123,8 +169,36 @@ def grade(transcript: list, workspace_path: str) -> dict:
                 break
             offset = chunk_end
 
-        return seen_ihdr and seen_idat and seen_iend and offset == len(image_bytes)
+        if not (
+            seen_ihdr
+            and seen_idat
+            and seen_iend
+            and offset == len(image_bytes)
+            and idat_data
+        ):
+            return False
 
+        channels = 3 if color_type == 2 else 4
+        row_bytes = width * channels
+        expected_size = (row_bytes + 1) * height
+        if expected_size > 50 * 1024 * 1024:
+            return False
+        try:
+            decoder = zlib.decompressobj()
+            raw = decoder.decompress(bytes(idat_data), expected_size + 1)
+            if (
+                len(raw) != expected_size
+                or not decoder.eof
+                or decoder.unused_data
+                or decoder.unconsumed_tail
+                or decoder.flush()
+            ):
+                return False
+        except zlib.error:
+            return False
+
+        stride = row_bytes + 1
+        return all(raw[row * stride] <= 4 for row in range(height))
     def has_image_payload(result_message: dict) -> bool:
         content = result_message.get("content")
         if not isinstance(content, list):

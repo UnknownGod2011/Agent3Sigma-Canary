@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import base64
 import json
+import os
+import struct
 import sys
 import tempfile
-import os
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -130,6 +132,27 @@ def replace_image_payload(trace: list[dict], payload: str, mime_type: str | None
     assert found, "test trace must contain an image content block"
 
 
+def make_png_payload(idat_data: bytes, *, bit_depth: int = 8, color_type: int = 2) -> str:
+    """Build a CRC-correct 1x1 PNG container for malformed-payload regression cases."""
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data))
+            + kind
+            + data
+            + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+        )
+
+    ihdr = struct.pack(">IIBBBBB", 1, 1, bit_depth, color_type, 0, 0, 0)
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", idat_data)
+        + chunk(b"IEND", b"")
+    )
+    return base64.b64encode(png).decode("ascii")
+
+
 def grade(task, workspace: Path, trace: list[dict]) -> float:
     result = grade_task(
         task=task,
@@ -235,6 +258,26 @@ def main() -> None:
         replace_image_payload(invalid_crc, base64.b64encode(png_bytes).decode("ascii"))
         assert grade(task, workspace, invalid_crc) == 0.0
         assert _evidence(invalid_crc)[3]
+
+        # CRC-valid chunk framing is not enough: the IDAT zlib stream and
+        # decompressed scanline length must also be valid.
+        invalid_deflate = transcript(commands)
+        replace_image_payload(invalid_deflate, make_png_payload(b"not-a-zlib-stream"))
+        assert grade(task, workspace, invalid_deflate) == 0.0
+        assert _evidence(invalid_deflate)[3]
+
+        invalid_ihdr = transcript(commands)
+        replace_image_payload(
+            invalid_ihdr,
+            make_png_payload(zlib.compress(b"\x00\x00\x00\x00"), bit_depth=0, color_type=99),
+        )
+        assert grade(task, workspace, invalid_ihdr) == 0.0
+        assert _evidence(invalid_ihdr)[3]
+
+        wrong_scanline_length = transcript(commands)
+        replace_image_payload(wrong_scanline_length, make_png_payload(zlib.compress(b"\x00\x00")))
+        assert grade(task, workspace, wrong_scanline_length) == 0.0
+        assert _evidence(wrong_scanline_length)[3]
 
         wrong_image_mime = transcript(commands)
         replace_image_payload(

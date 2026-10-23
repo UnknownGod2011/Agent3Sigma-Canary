@@ -162,6 +162,69 @@ def main() -> None:
         no_read = transcript(commands, include_read=False)
         assert grade(task, workspace, no_read) == 0.0
 
+        failed_read = transcript(commands, read_result_error=True)
+        assert grade(task, workspace, failed_read) == 0.0
+
+        missing_read_result = transcript(commands, include_read_result=False)
+        assert grade(task, workspace, missing_read_result) == 0.0
+
+        wrong_tool = transcript(commands, wrong_tool_for_command=commands[1])
+        assert grade(task, workspace, wrong_tool) == 0.0
+
+        # A pre-populated correct state must not compensate for omitted required GUI actions.
+        missing_type = transcript((
+            "desktopctl observe /tmp/before.png",
+            "desktopctl click 320 180",
+            "desktopctl key Home",
+            "desktopctl click 320 330",
+        ))
+        assert grade(task, workspace, missing_type) == 0.0
+
+        missing_save = transcript(commands[:-1])
+        assert grade(task, workspace, missing_save) == 0.0
+
+        # Reject indirect state access even when no forbidden filename appears literally.
+        hidden_write = transcript(commands + (
+            "python3 -c 'open(\"/tmp/unrelated.json\", \"w\").write(\"x\")'",
+        ))
+        assert grade(task, workspace, hidden_write) == 0.0
+
+        shell_substitution = transcript((
+            "desktopctl observe /tmp/$(printf x).png",
+            *commands[1:],
+        ))
+        assert grade(task, workspace, shell_substitution) == 0.0
+
+        reordered_result = transcript(commands)
+        result_index = next(
+            i for i, event in enumerate(reordered_result)
+            if event.get("message", {}).get("role") == "toolResult"
+            and event.get("message", {}).get("toolCallId") == "test-call-0"
+        )
+        call_index = next(
+            i for i, event in enumerate(reordered_result)
+            if any(
+                item.get("type") == "toolCall" and item.get("id") == "test-call-0"
+                for item in event.get("message", {}).get("content", [])
+                if isinstance(item, dict)
+            )
+        )
+        reordered_result.insert(call_index, reordered_result.pop(result_index))
+        assert grade(task, workspace, reordered_result) == 0.0
+
+        duplicate_result = transcript(commands)
+        first_result = next(
+            event for event in duplicate_result
+            if event.get("message", {}).get("role") == "toolResult"
+            and event.get("message", {}).get("toolCallId") == "test-call-0"
+        )
+        duplicate_result.append(first_result)
+        assert grade(task, workspace, duplicate_result) == 0.0
+
+        orphan_result = transcript(commands)
+        orphan_result.append(_tool_result_event("orphan-call", "orphan result"))
+        assert grade(task, workspace, orphan_result) == 0.0
+
         bypass = transcript((
             "desktopctl observe /tmp/before.png",
             "cat desktop_baseline_state.json",

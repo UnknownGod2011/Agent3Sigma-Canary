@@ -26,6 +26,9 @@ jobs:
       - name: Run desktop evidence regression tests
         run: uv run python workflow/images/desktop_baseline/test_evidence_parser.py
 
+      - name: Run model-attempt classification regression tests
+        run: python workflow/images/desktop_baseline/test_model_attempt_classifier.py
+
       - name: Prepare desktop baseline image context
         run: |
           set -euo pipefail

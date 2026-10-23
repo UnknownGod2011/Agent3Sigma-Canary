@@ -331,7 +331,6 @@ jobs:
             GEMINI_API_KEY_5
             GEMINI_API_KEY_6
           )
-          transient_re='HTTP (429|500|502|503|504)|RESOURCE_EXHAUSTED|UNAVAILABLE|high[- ]demand|rate.?limit|quota'
           attempted=0
 
           for idx in "${!key_vars[@]}"; do
@@ -466,17 +465,27 @@ jobs:
               exit 0
             fi
 
-            if grep -Eiq "$transient_re" "$attempt_log"; then
-              echo "Gemini key slot $slot hit provider capacity/quota; trying next configured slot"
-              rm -f "$attempt_log"
-              echo "::endgroup::"
-              continue
-            fi
-
-            echo "desktop baseline failed without provider-capacity evidence; refusing to hide a real benchmark failure behind key rotation" >&2
-            rm -f "$attempt_log"
-            echo "::endgroup::"
-            exit "$benchmark_rc"
+            classification="$(python workflow/images/desktop_baseline/classify_model_attempt.py "$benchmark_rc" "$attempt_log")"
+            case "$classification" in
+              transient_provider)
+                echo "Gemini key slot $slot had a transient provider interruption; trying next configured slot"
+                rm -f "$attempt_log"
+                echo "::endgroup::"
+                continue
+                ;;
+              benchmark_failure)
+                echo "desktop baseline produced a trajectory that failed verification; refusing to hide it behind key rotation" >&2
+                rm -f "$attempt_log"
+                echo "::endgroup::"
+                exit "$benchmark_rc"
+                ;;
+              *)
+                echo "desktop baseline failed without a recoverable provider interruption; refusing to hide a real benchmark failure behind key rotation" >&2
+                rm -f "$attempt_log"
+                echo "::endgroup::"
+                exit "$benchmark_rc"
+                ;;
+            esac
           done
 
           if [[ "$attempted" -eq 0 ]]; then

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Classify failed live-model attempts without masking benchmark failures.
+"""Classify model attempts without mislabeling provider interruptions as model failures.
 
-Provider capacity/transport errors may be retried with another configured key,
-but an evaluated trajectory that fails the benchmark verifier is a task/model
-failure even if an unrelated quota message also appears earlier in the log.
+A target-agent run explicitly ending with a transient provider error before the
+terminal verifier result is an interrupted attempt and may be retried. A generic
+quota message that appears only after a failed trajectory must not mask it.
 """
 from __future__ import annotations
 
@@ -20,15 +20,29 @@ _BENCHMARK_FAILURE = re.compile(
     r"desktop benchmark verification failed",
     re.IGNORECASE,
 )
+_AGENT_PROVIDER_INTERRUPTION = re.compile(
+    r"\[agent/embedded\].*?embedded run agent end:.*?isError=true.*?"
+    r"(?:HTTP\s*(?:429|500|502|503|504)\b|RESOURCE_EXHAUSTED|UNAVAILABLE|"
+    r"high[- ]demand|rate.?limit|quota)",
+    re.IGNORECASE,
+)
 
 
 def classify(exit_code: int, log: str) -> str:
     if exit_code == 0:
         return "success"
-    # A terminal verifier failure means an artifact was produced and failed
-    # the baseline gate. Do not let an earlier transient API error override it.
-    if _BENCHMARK_FAILURE.search(log):
+
+    benchmark_failure = _BENCHMARK_FAILURE.search(log)
+    if benchmark_failure:
+        # Retry only when the target agent itself ended with a transient
+        # provider error before the failed artifact was graded. This avoids
+        # treating quota-interrupted trajectories as model evidence while also
+        # preventing later/generic quota text from hiding a real task failure.
+        provider_interruption = _AGENT_PROVIDER_INTERRUPTION.search(log)
+        if provider_interruption and provider_interruption.start() < benchmark_failure.start():
+            return "transient_provider"
         return "benchmark_failure"
+
     if _TRANSIENT_PROVIDER.search(log):
         return "transient_provider"
     return "other_failure"

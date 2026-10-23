@@ -23,7 +23,7 @@ def main() -> None:
     expected = "${{ (github.event_name == 'workflow_dispatch' && inputs.run_live_model == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-live-model]')) }}"
     condition = re.search(r"(?m)^    if:[ \\t]*(.+)$", model)
     assert condition and condition.group(1).strip() == expected, (
-        "live-model evaluation must require manual dispatch or the explicit [run-live-model] marker",
+        "live-model evaluation must require the explicit dispatch boolean or [run-live-model] push marker",
         condition.group(1).strip() if condition else None,
     )
     dispatch = re.search(r"(?ms)^  workflow_dispatch:\n(?P<body>(?:^[ \\t]+.*\n)*)", source)
@@ -33,10 +33,10 @@ def main() -> None:
         dispatch.group("body"),
     )
     assert input_block, "workflow_dispatch must expose run_live_model"
-    assert re.search(r"(?m)^        type: boolean\\s*$", input_block.group("body")), (
+    assert re.search(r"(?m)^        type: boolean\s*$", input_block.group("body")), (
         "run_live_model must be a boolean input"
     )
-    assert re.search(r"(?m)^        default: false\\s*$", input_block.group("body")), (
+    assert re.search(r"(?m)^        default: false\s*$", input_block.group("body")), (
         "manual model execution must default to disabled"
     )
 

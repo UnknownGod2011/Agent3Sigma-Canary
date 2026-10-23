@@ -79,12 +79,41 @@ def _message(role: str, content: list[dict[str, Any]]) -> dict[str, Any]:
     return {"type": "message", "message": {"role": role, "content": content}}
 
 
-def _tool_call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    return _message("assistant", [{"type": "toolCall", "name": name, "arguments": arguments}])
+def _tool_call(name: str, arguments: dict[str, Any], call_id: str) -> dict[str, Any]:
+    return _message(
+        "assistant",
+        [{"type": "toolCall", "id": call_id, "name": name, "arguments": arguments}],
+    )
 
 
-def _tool_result(text: str) -> dict[str, Any]:
-    return _message("toolResult", [{"type": "text", "text": text}])
+def _tool_result(call_id: str, text: str, *, is_error: bool = False) -> dict[str, Any]:
+    return {
+        "type": "message",
+        "message": {
+            "role": "toolResult",
+            "toolCallId": call_id,
+            "content": [{"type": "text", "text": text}],
+            "isError": is_error,
+        },
+    }
+
+
+def _record_tool(
+    events: list[dict[str, Any]],
+    name: str,
+    arguments: dict[str, Any],
+    runner,
+) -> Any:
+    """Record a tool call and its correlated result, including failures."""
+    call_id = f"desktop-reference-{len(events):04d}"
+    events.append(_tool_call(name, arguments, call_id))
+    try:
+        result = runner()
+    except Exception as exc:
+        events.append(_tool_result(call_id, str(exc), is_error=True))
+        raise
+    events.append(_tool_result(call_id, str(result or "ok"), is_error=False))
+    return result
 
 
 def _write_transcript(agent_id: str, session_id: str, events: list[dict[str, Any]]) -> None:
@@ -153,16 +182,25 @@ def cmd_agent(args: argparse.Namespace) -> int:
     # 1. Observe the real X11 desktop through the same helper available to a
     #    normal evaluated agent.
     observe_cmd = f"desktopctl observe {SCREENSHOT_PATH}"
-    events.append(_tool_call("exec", {"command": observe_cmd}))
-    observe_out = _run_gui("desktopctl", "observe", str(SCREENSHOT_PATH))
-    events.append(_tool_result(observe_out or str(SCREENSHOT_PATH)))
+    _record_tool(
+        events,
+        "exec",
+        {"command": observe_cmd},
+        lambda: _run_gui("desktopctl", "observe", str(SCREENSHOT_PATH)),
+    )
 
-    # 2. Consume the screenshot bytes before any GUI action.  The transcript
-    #    records this as an image-read event so the task's fail-closed grader
-    #    can distinguish capture-only trajectories from actual consumption.
-    events.append(_tool_call("read", {"path": str(SCREENSHOT_PATH)}))
-    width, height, size = _inspect_png(SCREENSHOT_PATH)
-    events.append(_tool_result(f"PNG screenshot consumed: {width}x{height}, {size} bytes"))
+    # 2. Consume the screenshot bytes before any GUI action. The result is
+    #    correlated with the read call and explicitly marked successful.
+    def consume_screenshot() -> str:
+        width, height, size = _inspect_png(SCREENSHOT_PATH)
+        return f"PNG screenshot consumed: {width}x{height}, {size} bytes"
+
+    _record_tool(
+        events,
+        "read",
+        {"path": str(SCREENSHOT_PATH)},
+        consume_screenshot,
+    )
 
     # 3. Drive only the public GUI surface.  These coordinates are stable by
     #    construction of the deterministic 800x600 fixture; this controller is
@@ -175,8 +213,12 @@ def cmd_agent(args: argparse.Namespace) -> int:
         ("desktopctl click 320 330", ("desktopctl", "click", "320", "330")),
     ]
     for command, argv in actions:
-        events.append(_tool_call("exec", {"command": command}))
-        events.append(_tool_result(_run_gui(*argv) or "ok"))
+        _record_tool(
+            events,
+            "exec",
+            {"command": command},
+            lambda argv=argv: _run_gui(*argv),
+        )
 
     # The validated smoke test allows the Tk event loop up to three seconds to
     # persist the Save callback. Match that timing budget here without reading

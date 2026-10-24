@@ -138,9 +138,9 @@ try:
     state = json.loads(path.read_text(encoding="utf-8"))
 except (OSError, ValueError) as exc:
     raise SystemExit(f"could not read in-container task state: {exc}")
-if state.get("saved") is not True or state.get("text") != target:
+if state.get("saved") is not True or state.get("text") != target or state.get("current_text") != target:
     raise SystemExit(f"unexpected in-container task state at {path}: {state!r}")
-print(f"pre-teardown state verified inside container: saved={state['saved']}, text={state['text']!r}")
+print(f"pre-teardown state verified inside container: saved={state['saved']}, text={state['text']!r}, current_text={state['current_text']!r}")
 """
     result = subprocess.run(
         ["docker", "exec", container_id, "python3", "-c", probe],

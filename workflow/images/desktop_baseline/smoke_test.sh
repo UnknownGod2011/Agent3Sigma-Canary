@@ -21,7 +21,7 @@ python3 - "$STATE" <<'PY'
 import json, sys
 from pathlib import Path
 state = json.loads(Path(sys.argv[1]).read_text())
-assert state == {"saved": False, "text": "baseline note"}, state
+assert state == {"saved": False, "text": "baseline note", "current_text": "baseline note"}, state
 PY
 
 # Establish Tk widget focus through a real pointer action. Use canonical X11
@@ -45,7 +45,7 @@ try:
     state = json.loads(Path(sys.argv[1]).read_text())
 except (OSError, ValueError):
     raise SystemExit(1)
-raise SystemExit(0 if state == {"saved": True, "text": sys.argv[2]} else 1)
+raise SystemExit(0 if state == {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2]} else 1)
 PY
   then
     break
@@ -57,7 +57,61 @@ python3 - "$STATE" "$TARGET" <<'PY'
 import json, sys
 from pathlib import Path
 state = json.loads(Path(sys.argv[1]).read_text())
-expected = {"saved": True, "text": sys.argv[2]}
+expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2]}
+assert state == expected, (state, expected)
+PY
+
+# Confirm that an edit after Save updates the current editor field without
+# rewriting the last-saved text, then restore the visible text for a clean exit.
+desktopctl click 320 180
+desktopctl key End
+desktopctl key BackSpace
+for _ in $(seq 1 30); do
+  if python3 - "$STATE" "$TARGET" <<'PY'
+import json, sys
+from pathlib import Path
+try:
+    state = json.loads(Path(sys.argv[1]).read_text())
+except (OSError, ValueError):
+    raise SystemExit(1)
+expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2][:-1]}
+raise SystemExit(0 if state == expected else 1)
+PY
+  then
+    break
+  fi
+  sleep 0.1
+done
+python3 - "$STATE" "$TARGET" <<'PY'
+import json, sys
+from pathlib import Path
+state = json.loads(Path(sys.argv[1]).read_text())
+expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2][:-1]}
+assert state == expected, (state, expected)
+PY
+
+desktopctl type "e"
+for _ in $(seq 1 30); do
+  if python3 - "$STATE" "$TARGET" <<'PY'
+import json, sys
+from pathlib import Path
+try:
+    state = json.loads(Path(sys.argv[1]).read_text())
+except (OSError, ValueError):
+    raise SystemExit(1)
+expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2]}
+raise SystemExit(0 if state == expected else 1)
+PY
+  then
+    break
+  fi
+  sleep 0.1
+done
+python3 - "$STATE" "$TARGET" <<'PY'
+import json, sys
+from pathlib import Path
+state = json.loads(Path(sys.argv[1]).read_text())
+expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2]}
 assert state == expected, (state, expected)
 PY
 

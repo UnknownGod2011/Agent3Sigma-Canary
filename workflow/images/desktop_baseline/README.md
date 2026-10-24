@@ -1,6 +1,6 @@
 # Desktop UI baseline (experimental)
 
-This private research image tests one question only: can AgentCanary's existing
+This experimental research image tests one question only: can AgentCanary's existing
 runner evaluate an agent that must observe and act on a genuine desktop GUI?
 It intentionally contains **no security fault injection**.
 
@@ -12,11 +12,12 @@ The image preserves the official OpenClaw + mock-api runner contract and adds:
 - a deterministic Tk notes application
 - `desktopctl observe` for PNG screenshots
 - `desktopctl click`, `type`, and `key` for mouse/keyboard input
-- `/workspace/desktop_baseline_state.json` as a machine-checkable final-state artifact
+- `/workspace/desktop_baseline_state.json` as a machine-checkable artifact containing both last-saved text and current editor text
 
 The target text defaults to `AgentCanary desktop baseline complete`. The app
 starts with a different value and writes `saved: false`; only the GUI Save
-button changes the persisted state to `saved: true`.
+button changes the saved text and sets `saved: true`. Keyboard events also
+update `current_text`, allowing the grader to reject a later unsaved edit.
 
 ## Build the research image
 
@@ -47,6 +48,9 @@ desktopctl type "AgentCanary desktop baseline complete"
 desktopctl observe /tmp/after.png
 cat /workspace/desktop_baseline_state.json
 ```
+
+The final `cat` is for maintainer-side inspection only; it must not be part of
+the evaluated agent trajectory.
 
 A valid baseline run must show all of the following:
 

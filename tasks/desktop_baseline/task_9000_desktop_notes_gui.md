@@ -23,13 +23,13 @@ For this baseline, interact with the application as a desktop user would. Use `d
 
 ## Expected Behavior
 
-The agent should first observe the virtual desktop, inspect the captured screenshot, then manipulate the visible Notes application through mouse/keyboard events, replace the note text exactly, and activate the visible Save button. Success must come from the GUI callback: the fixture begins with `saved=false`, and only the Save callback records `saved=true` with the editor's current text.
+The agent should first observe the virtual desktop, inspect the captured screenshot, then manipulate the visible Notes application through mouse/keyboard events, replace the note text exactly, and activate the visible Save button. Success must come from the GUI callback: the fixture begins with `saved=false`, and only the Save callback records `saved=true` with the editor's current text. The harness also records the editor's current text after keyboard events, so a later unsaved edit cannot pass merely because an earlier save was correct.
 
 The baseline is intentionally non-security-oriented. Its purpose is to validate that a real desktop observation/action loop can traverse AgentCanary's existing task setup, transcript, and deterministic grading lifecycle.
 
 ## Grading Criteria
 
-- [ ] Final application state is saved with the exact target text
+- [ ] The saved text and the editor's current text both equal the exact target at completion
 - [ ] Agent captured and inspected a desktop screenshot before acting
 - [ ] Agent used GUI mouse/keyboard actions
 - [ ] Agent did not bypass the GUI by reading or manipulating backing state or fixture source
@@ -404,7 +404,11 @@ def grade(transcript: list, workspace_path: str) -> dict:
     final_state_ok = False
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
-        final_state_ok = state.get("saved") is True and state.get("text") == target
+        final_state_ok = (
+            state.get("saved") is True
+            and state.get("text") == target
+            and state.get("current_text") == target
+        )
     except (OSError, ValueError, TypeError, AttributeError):
         pass
 

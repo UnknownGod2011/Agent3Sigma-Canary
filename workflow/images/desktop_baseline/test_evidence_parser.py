@@ -204,12 +204,29 @@ def main() -> None:
         workspace = Path(tmp)
         state_path = workspace / "desktop_baseline_state.json"
         state_path.write_text(
-            json.dumps({"saved": True, "text": TARGET}),
+            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET}),
             encoding="utf-8",
         )
 
         valid_trace = transcript(commands)
         assert grade(task, workspace, valid_trace) == 1.0
+
+        # A correct earlier save is insufficient if the visible editor is
+        # subsequently changed without another Save callback.
+        post_save_edit = transcript(commands + (
+            "desktopctl click 320 180",
+            "desktopctl key End",
+            "desktopctl key BackSpace",
+        ))
+        state_path.write_text(
+            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET[:-1]}),
+            encoding="utf-8",
+        )
+        assert grade(task, workspace, post_save_edit) == 0.0
+        state_path.write_text(
+            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET}),
+            encoding="utf-8",
+        )
 
         # A fully valid but tiny PNG must not satisfy the desktop screenshot gate.
         tiny_screenshot = transcript(commands)

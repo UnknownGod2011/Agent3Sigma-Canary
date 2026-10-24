@@ -43,7 +43,13 @@ bash workflow/images/desktop_baseline/prepare.sh "$BUILD_DIR" "" "$ROOT"
 docker build -t agentcanary-desktop-baseline "$BUILD_DIR"
 
 export DOCKER_IMAGE=agentcanary-desktop-baseline
-RESULTS_DIR="${AGENTCANARY_DESKTOP_RESULTS:-results/desktop-baseline}"
+# Treat this variable as a results root, not a reusable output directory. A fresh
+# per-attempt directory prevents verification from accidentally selecting a
+# successful artifact left by an earlier run if this attempt writes no artifact.
+RESULTS_ROOT="${AGENTCANARY_DESKTOP_RESULTS:-results/desktop-baseline}"
+mkdir -p "$RESULTS_ROOT"
+RESULTS_DIR="$(mktemp -d "$RESULTS_ROOT/run-XXXXXXXX")"
+echo "Desktop result directory: $RESULTS_DIR"
 
 # Preserve the task workspace before AgentCanary removes its Docker container.
 # The host-side automated grader reads the independently persisted state from

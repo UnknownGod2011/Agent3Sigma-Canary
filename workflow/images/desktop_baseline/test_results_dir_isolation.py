@@ -2,6 +2,7 @@
 """Regression test that manual desktop runs cannot verify stale result artifacts."""
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import tempfile
@@ -44,7 +45,9 @@ def main() -> None:
         root = Path(tmp) / "results"
         stale = root / "old-run" / "job_1" / "task_9000" / "task_9000.json"
         stale.parent.mkdir(parents=True)
-        stale.write_text('{"grading":{"score":1.0}}\\n', encoding="utf-8")
+        stale_payload = {"task_id": "task_9000_desktop_notes_gui", "grading": {"score": 1.0, "max_score": 1.0}}
+        stale.write_text(json.dumps(stale_payload) + chr(10), encoding="utf-8")
+        assert json.loads(stale.read_text(encoding="utf-8")) == stale_payload
 
         first = allocate_results_dir(root)
         second = allocate_results_dir(root)

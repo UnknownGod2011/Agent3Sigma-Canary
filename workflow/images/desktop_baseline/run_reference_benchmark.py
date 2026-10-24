@@ -162,9 +162,13 @@ def _stop_after_container_state_assertion() -> None:
 
 
 def _stop_with_workspace_copyback() -> None:
-    if docker.is_active():
-        _copy_task_workspaces_to_host()
-    _original_stop()
+    # Always tear down the evaluation container, even when preserving the
+    # workspace fails. Keep the copyback exception visible to the caller.
+    try:
+        if docker.is_active():
+            _copy_task_workspaces_to_host()
+    finally:
+        _original_stop()
 
 
 def main() -> None:

@@ -38,6 +38,9 @@ jobs:
       - name: Verify each desktop run gets an isolated result directory
         run: python workflow/images/desktop_baseline/test_results_dir_isolation.py
 
+      - name: Verify container teardown if workspace copyback fails
+        run: uv run python workflow/images/desktop_baseline/test_workspace_copyback_cleanup.py
+
       - name: Prepare desktop baseline image context
         run: |
           set -euo pipefail

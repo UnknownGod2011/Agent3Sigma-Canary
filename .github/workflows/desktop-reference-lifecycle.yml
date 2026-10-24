@@ -34,6 +34,8 @@ jobs:
 
       - name: Run desktop runner placeholder preflight regression tests
         run: python workflow/images/desktop_baseline/test_run_benchmark_preflight.py
+      - name: Verify each desktop run gets an isolated result directory
+        run: python workflow/images/desktop_baseline/test_results_dir_isolation.py
 
       - name: Prepare desktop baseline image context
         run: |

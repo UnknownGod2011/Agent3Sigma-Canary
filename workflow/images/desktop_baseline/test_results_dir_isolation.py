@@ -46,7 +46,7 @@ def allocate_results_dir(root: Path) -> Path:
 def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp) / "results"
-        stale = root / "job_1" / TASK_ID / f"{TASK_ID}.json"
+        stale = root / "job_1" / f"task_{TASK_ID}" / f"task_{TASK_ID}.json"
         stale.parent.mkdir(parents=True)
         stale_payload = {"task_id": "task_9000_desktop_notes_gui", "grading": {"score": 1.0, "max_score": 1.0}}
         stale.write_text(json.dumps(stale_payload) + chr(10), encoding="utf-8")

@@ -357,6 +357,24 @@ def main() -> None:
             *commands[1:],
         ))
         assert grade(task, workspace, shell_substitution) == 0.0
+        assert _evidence(shell_substitution)[3]
+
+        # The verifier must reject shell expansion even when the first tokens
+        # still look like an allowed desktopctl GUI action.
+        shell_action_substitution = transcript((
+            "desktopctl observe /tmp/before.png",
+            "desktopctl click $(printf 320) 180",
+            *commands[2:],
+        ))
+        assert grade(task, workspace, shell_action_substitution) == 0.0
+        assert _evidence(shell_action_substitution)[3]
+
+        shell_redirection = transcript((
+            *commands[:-1],
+            "desktopctl click 320 330 >/tmp/out",
+        ))
+        assert grade(task, workspace, shell_redirection) == 0.0
+        assert _evidence(shell_redirection)[3]
 
         reordered_result = transcript(commands)
         result_index = next(

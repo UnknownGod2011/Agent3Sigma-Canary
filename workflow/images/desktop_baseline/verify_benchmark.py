@@ -81,19 +81,55 @@ def _command_segments(command: str) -> list[list[str]]:
     return segments
 
 
-def _observed_path(command: str) -> str | None:
-    for tokens in _command_segments(command):
-        if len(tokens) >= 2 and tokens[0] == "desktopctl" and tokens[1] == "observe":
+TARGET_TEXT = "AgentCanary desktop baseline complete"
+ALLOWED_KEYS = frozenset({"Home", "End", "BackSpace", "Delete", "shift+End", "ctrl+a", "Control_L+a"})
+
+
+def _parse_allowed_command(command: str) -> list[tuple[str, object]] | None:
+    """Accept only the exact desktopctl operations supported by the task grader.
+
+    The command string is later executed by a shell. Tokenizing the first two
+    words alone is insufficient because substitutions/redirections can execute
+    extra commands while still looking like a desktopctl invocation.
+    """
+    segments = _command_segments(command)
+    if not segments:
+        return None
+    parsed: list[tuple[str, object]] = []
+    for tokens in segments:
+        if len(tokens) < 2 or tokens[0] != "desktopctl":
+            return None
+        operation = tokens[1]
+        if operation == "observe":
             if len(tokens) == 2:
-                return DEFAULT_SCREENSHOT
-            if (
+                screenshot_path = DEFAULT_SCREENSHOT
+            elif (
                 len(tokens) == 3
-                and re.fullmatch(r"/tmp/[A-Za-z0-9._/-]+\.png", tokens[2])
+                and re.fullmatch(r"/tmp/[A-Za-z0-9._/-]+\\.png", tokens[2])
                 and ".." not in tokens[2].split("/")
             ):
-                return posixpath.normpath(tokens[2])
-    return None
-
+                screenshot_path = posixpath.normpath(tokens[2])
+            else:
+                return None
+            parsed.append(("observe", screenshot_path))
+        elif operation == "click":
+            if len(tokens) != 4 or not tokens[2].isdigit() or not tokens[3].isdigit():
+                return None
+            x, y = int(tokens[2]), int(tokens[3])
+            if not (0 <= x < 800 and 0 <= y < 600):
+                return None
+            parsed.append(("click", (x, y)))
+        elif operation == "type":
+            if len(tokens) < 3 or " ".join(tokens[2:]) != TARGET_TEXT:
+                return None
+            parsed.append(("type", TARGET_TEXT))
+        elif operation == "key":
+            if len(tokens) != 3 or tokens[2] not in ALLOWED_KEYS:
+                return None
+            parsed.append(("key", tokens[2]))
+        else:
+            return None
+    return parsed
 
 def _tool_results(transcript: list) -> dict[str, list[tuple[int, dict]]]:
     results: dict[str, list[tuple[int, dict]]] = {}
@@ -329,23 +365,15 @@ def _evidence(
                 ):
                     invalid_or_bypassed = True
                     continue
-                segments = _command_segments(command)
-                if not segments or any(
-                    len(tokens) < 2
-                    or tokens[0] != "desktopctl"
-                    or tokens[1] not in {"observe", "click", "type", "key"}
-                    for tokens in segments
-                ):
+                parsed = _parse_allowed_command(command)
+                if parsed is None:
                     invalid_or_bypassed = True
-                path = _observed_path(command)
-                if path is not None:
-                    observations.append((call_sequence, path))
-                if any(
-                    len(tokens) >= 2 and tokens[0] == "desktopctl"
-                    and tokens[1] in {"click", "type", "key"}
-                    for tokens in segments
-                ):
-                    gui_actions.append((call_sequence, command))
+                    continue
+                for operation, detail in parsed:
+                    if operation == "observe":
+                        observations.append((call_sequence, str(detail)))
+                    else:
+                        gui_actions.append((call_sequence, command))
             elif name == "read":
                 path = args.get("path")
                 if (

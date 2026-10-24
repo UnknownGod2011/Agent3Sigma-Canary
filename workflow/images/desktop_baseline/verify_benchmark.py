@@ -105,7 +105,7 @@ def _parse_allowed_command(command: str) -> list[tuple[str, object]] | None:
                 screenshot_path = DEFAULT_SCREENSHOT
             elif (
                 len(tokens) == 3
-                and re.fullmatch(r"/tmp/[A-Za-z0-9._/-]+\\.png", tokens[2])
+                and re.fullmatch(r"/tmp/[A-Za-z0-9._/-]+\.png", tokens[2])
                 and ".." not in tokens[2].split("/")
             ):
                 screenshot_path = posixpath.normpath(tokens[2])

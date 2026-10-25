@@ -10,6 +10,7 @@ on:
       - "benchmark.py"
       - "scripts/**"
       - "workflow/images/official/**"
+      - "assets/mock_api/**"
       - "pyproject.toml"
       - "uv.lock"
       - "setup.sh"
@@ -31,6 +32,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify desktop CI watches image source dependencies
+        run: python workflow/images/desktop_baseline/test_workflow_trigger_paths.py
 
       - name: Validate task loading and fail-closed grading
         run: |

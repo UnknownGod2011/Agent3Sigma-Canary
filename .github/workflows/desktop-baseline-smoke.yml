@@ -7,6 +7,12 @@ on:
     paths:
       - "workflow/images/desktop_baseline/**"
       - "tasks/desktop_baseline/**"
+      - "benchmark.py"
+      - "scripts/**"
+      - "workflow/images/official/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "setup.sh"
       - ".github/workflows/desktop-baseline-smoke.yml"
   workflow_dispatch:
     inputs:

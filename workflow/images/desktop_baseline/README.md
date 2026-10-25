@@ -25,6 +25,20 @@ starts with a different value and writes `saved: false`; only the GUI Save
 button changes the saved text and sets `saved: true`. Keyboard events also
 update `current_text`, allowing the grader to reject a later unsaved edit.
 
+## Deterministic OpenClaw tool-loop integration
+
+CI also runs the task through the unmodified OpenClaw CLI against a credential-free,
+local OpenAI-compatible provider. The provider emits a fixed sequence of normal
+tool calls and refuses to issue the first GUI action unless the screenshot image
+payload appears in the subsequent model request. The ordinary AgentCanary
+transcript and independent task grader must still validate the saved GUI state.
+
+This is an integration fixture, not autonomous visual reasoning or model-quality
+evidence: the local provider follows a scripted plan. It complements the reference
+controller by testing the real OpenClaw tool dispatch/provider/transcript path
+without API credentials, external model-provider calls, or per-run API cost.
+It does not change the documented container isolation limitation.
+
 ## Build the research image
 
 From the repository root, after `bash setup.sh` has generated the official

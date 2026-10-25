@@ -39,6 +39,9 @@ jobs:
       - name: Run model-attempt classification regression tests
         run: python workflow/images/desktop_baseline/test_model_attempt_classifier.py
 
+      - name: Run deterministic OpenClaw model-stub regression tests
+        run: python workflow/images/desktop_baseline/test_desktop_model_stub.py
+
       - name: Verify live-model job requires explicit opt-in
         run: python workflow/images/desktop_baseline/test_live_model_opt_in.py
 
@@ -60,6 +63,76 @@ jobs:
 
       - name: Build desktop baseline image
         run: docker build -t agentcanary-desktop-baseline "$BUILD_DIR"
+
+
+      - name: Build credential-free OpenClaw local-model integration image
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/desktop-openclaw-stub.json"
+          cat > "$config" <<'JSON'
+          {
+            "models": {
+              "mode": "merge",
+              "providers": {
+                "desktop-stub": {
+                  "baseUrl": "http://127.0.0.1:8765/v1",
+                  "apiKey": "agentcanary-local-stub-key",
+                  "api": "openai-completions",
+                  "models": [
+                    {
+                      "id": "desktop-fixture",
+                      "name": "AgentCanary desktop integration fixture",
+                      "reasoning": false,
+                      "input": ["text", "image"],
+                      "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                      "contextWindow": 32768,
+                      "maxTokens": 2048
+                    }
+                  ]
+                }
+              }
+            },
+            "agents": {
+              "defaults": {
+                "model": {"primary": "desktop-stub/desktop-fixture"},
+                "models": {
+                  "desktop-stub/desktop-fixture": {"alias": "desktop.stub.desktop.fixture"}
+                }
+              }
+            },
+            "tools": {"profile": "full"}
+          }
+          JSON
+
+          marker="$RUNNER_TEMP/enable-model-stub"
+          : > "$marker"
+          container="agentcanary-desktop-openclaw-stub-build"
+          cleanup() {
+            docker rm -f "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker create --name "$container" agentcanary-desktop-baseline >/dev/null
+          docker cp "$config" "$container:/root/.openclaw/openclaw.json"
+          docker cp "$marker" "$container:/opt/agentcanary-desktop/enable-model-stub"
+          docker start "$container" >/dev/null
+
+          ready=false
+          for _ in $(seq 1 40); do
+            if docker exec "$container" curl -fsS http://127.0.0.1:8765/health >/dev/null; then
+              ready=true
+              break
+            fi
+            sleep 0.25
+          done
+          [[ "$ready" == true ]] || {
+            docker logs "$container" || true
+            docker exec "$container" cat /tmp/agentcanary-desktop-model-stub.log || true
+            exit 1
+          }
+
+          docker stop "$container" >/dev/null
+          docker commit "$container" agentcanary-desktop-openclaw-stub >/dev/null
 
       - name: Build credential-free reference-agent image
         run: |
@@ -119,6 +192,72 @@ jobs:
 
           uv run python workflow/images/desktop_baseline/verify_benchmark.py "$results_dir"
           echo "independent reference lifecycle run reproduced the expected GUI state and grade"
+
+
+      - name: Run real OpenClaw tool loop against deterministic local provider
+        env:
+          DOCKER_IMAGE: agentcanary-desktop-openclaw-stub
+        run: |
+          set -euo pipefail
+          for attempt in first repeat; do
+            results_dir="$RUNNER_TEMP/desktop-openclaw-stub-$attempt"
+            rm -rf "$results_dir"
+
+            uv run python workflow/images/desktop_baseline/run_reference_benchmark.py \
+              --model desktop-stub/desktop-fixture \
+              --suite task_9000_desktop_notes_gui \
+              --docker \
+              --timeout-multiplier 1.0 \
+              --output-dir "$results_dir" \
+              --verbose
+
+            uv run python workflow/images/desktop_baseline/verify_benchmark.py "$results_dir"
+
+            python - "$results_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          task_id = "task_9000_desktop_notes_gui"
+          artifacts = list(root.glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+          assert artifacts, f"no OpenClaw stub-run artifact found under {root}"
+          artifact = max(artifacts, key=lambda path: path.stat().st_mtime_ns)
+          data = json.loads(artifact.read_text(encoding="utf-8"))
+          assert data.get("task_id") == task_id, data.get("task_id")
+          grading = data.get("grading", {})
+          assert grading.get("score") == 1.0, grading
+
+          calls = []
+          call_ids = []
+          image_reads = []
+          for event in data.get("transcript", []):
+              if not isinstance(event, dict) or event.get("type") != "message":
+                  continue
+              message = event.get("message", {})
+              if not isinstance(message, dict) or message.get("role") != "assistant":
+                  continue
+              for item in message.get("content", []):
+                  if not isinstance(item, dict) or item.get("type") != "toolCall":
+                      continue
+                  call_ids.append(str(item.get("id", "")))
+                  calls.append(item.get("name"))
+                  arguments = item.get("arguments", {})
+                  if isinstance(arguments, dict) and item.get("name") == "read":
+                      path = arguments.get("path")
+                      if isinstance(path, str) and path.endswith(".png"):
+                          image_reads.append(path)
+
+          assert calls.count("exec") >= 5, calls
+          assert "read" in calls and image_reads, (calls, image_reads)
+          assert call_ids and not any(call_id.startswith("desktop-reference-") for call_id in call_ids), (
+              "the integration run appears to have used the reference shim rather than the installed OpenClaw CLI",
+              call_ids,
+          )
+          print(f"real OpenClaw tool-loop artifact verified: {artifact}")
+          PY
+          done
+          echo "two real OpenClaw tool-loop runs reproduced the expected independently graded GUI task"
 
       - name: Prove host grading requires Docker workspace copyback
         env:

@@ -29,5 +29,7 @@ cp "${IMAGES_DIR}/smoke_test.sh" "${BUILD_DIR}/smoke_test.sh"
 mkdir -p "${BUILD_DIR}/desktop"
 cp "${IMAGES_DIR}/desktop/notes_app.py" "${BUILD_DIR}/desktop/notes_app.py"
 cp "${IMAGES_DIR}/desktop/desktopctl" "${BUILD_DIR}/desktop/desktopctl"
+cp "${IMAGES_DIR}/desktop_model_stub.py" "${BUILD_DIR}/desktop/desktop_model_stub.py"
+cp "${IMAGES_DIR}/desktop_baseline_entrypoint.sh" "${BUILD_DIR}/desktop/desktop_baseline_entrypoint.sh"
 
 echo "[INFO] desktop_baseline build context prepared"

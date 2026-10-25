@@ -209,13 +209,17 @@ jobs:
           task = Path(
               "tasks/desktop_baseline/task_9000_desktop_notes_gui.md"
           ).read_text(encoding="utf-8")
+          # The task frontmatter is YAML embedded in Markdown, so quotes in its
+          # command scalar are escaped in the source file. Normalize only that
+          # frontmatter before asserting the pre_setup contract.
+          task_frontmatter = task.split("---", 2)[1].replace('\\\"', '"')
           assert "_copy_task_workspaces_to_host" in wrapper
           assert "_copy_grader_state_artifact_to_host" in wrapper
           assert 'STATE_ARTIFACT_IN_CONTAINER = "/tmp/agentcanary-desktop/desktop_baseline_state.json"' in wrapper
           assert "state artifact leaked into agent workspace" in wrapper
-          assert 'desktopctl start "$AGENTCANARY_TASK_WORKSPACE/desktop_baseline_state.json"' not in task
-          assert 'rm -f "$AGENTCANARY_TASK_WORKSPACE/desktop_baseline_state.json"' in task
-          assert "/tmp/agentcanary-desktop/desktop_baseline_state.json" in task
+          assert 'desktopctl start "$AGENTCANARY_TASK_WORKSPACE/desktop_baseline_state.json"' not in task_frontmatter
+          assert 'rm -f "$AGENTCANARY_TASK_WORKSPACE/desktop_baseline_state.json"' in task_frontmatter
+          assert "/tmp/agentcanary-desktop/desktop_baseline_state.json" in task_frontmatter
           assert '"docker",' in wrapper
           assert '"cp",' in wrapper
           assert "benchmark.main()" in wrapper

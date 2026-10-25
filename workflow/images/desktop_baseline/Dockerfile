@@ -44,7 +44,7 @@ COPY smoke_test.sh /usr/local/bin/desktop-baseline-smoke-test
 RUN chmod +x /opt/agentcanary-desktop/notes_app.py /usr/local/bin/desktopctl /usr/local/bin/desktop-baseline-smoke-test
 
 ENV DISPLAY=:99
-ENV DESKTOP_BASELINE_STATE=/workspace/desktop_baseline_state.json
+ENV DESKTOP_BASELINE_STATE=/tmp/agentcanary-desktop/desktop_baseline_state.json
 WORKDIR /workspace
 ENTRYPOINT ["/opt/mock-api/entrypoint.sh"]
 CMD ["tail", "-f", "/dev/null"]

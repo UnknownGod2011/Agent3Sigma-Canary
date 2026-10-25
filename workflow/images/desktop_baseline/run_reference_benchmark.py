@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 """Run the desktop reference lifecycle while preserving Docker task outputs.
 
-This is a private experiment for the desktop/UI baseline. AgentCanary currently
-copies transcripts out of the evaluation container, but its Docker lifecycle
-removes the container before host-side automated grading without copying the
-mutated task workspace back to the host. A grader that validates GUI-persisted
-state therefore cannot see the state produced inside Docker.
+This is an experimental desktop/UI baseline adapter. AgentCanary's Docker
+lifecycle removes the container before host-side automated grading, so this
+wrapper preserves the task workspace and separately exports the deterministic
+state artifact from `/tmp/agentcanary-desktop/` into the host grading workspace.
 
-The wrapper makes that integration boundary explicit without changing the core
-runner yet: immediately before the normal Docker stop, it copies each
-container-side task ``agent_workspace`` to the identical host path that the
-existing execution result already reports. The normal benchmark and grader then
-run unchanged. The wrapper may print the copied deterministic desktop state as
-a harness-side diagnostic; the evaluated reference controller never reads it.
+The state artifact stays outside the agent workspace during the evaluated
+interaction. The wrapper copies it only after the agent run, immediately before
+container teardown, so the existing host-side grader can independently verify
+the GUI result without exposing the artifact as a workspace file to the agent.
 """
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +28,74 @@ import benchmark  # noqa: E402
 import lib_docker as docker  # noqa: E402
 
 _original_stop = docker.stop
+
+
+STATE_ARTIFACT_IN_CONTAINER = "/tmp/agentcanary-desktop/desktop_baseline_state.json"
+STATE_ARTIFACT_NAME = "desktop_baseline_state.json"
+
+
+def _remove_path(path: Path) -> None:
+    """Remove an agent-controlled path without following a symlink."""
+    if path.is_symlink() or path.is_file():
+        path.unlink(missing_ok=True)
+    elif path.is_dir():
+        shutil.rmtree(path)
+
+
+def _copy_grader_state_artifact_to_host(container_id: str, host_workspace: Path) -> bool:
+    """Copy the authoritative GUI state only after the evaluated interaction.
+
+    Any same-named file copied from the agent workspace is discarded first.
+    Missing state is a normal task failure and must grade fail-closed; Docker
+    transport errors are harness failures and remain visible to the caller.
+    """
+    host_state_path = host_workspace / STATE_ARTIFACT_NAME
+    temporary_copy = host_workspace / ".desktop_baseline_state.json.copyback"
+    _remove_path(host_state_path)
+    _remove_path(temporary_copy)
+
+    probe_command = (
+        f"if [ -f {STATE_ARTIFACT_IN_CONTAINER} ]; "
+        "then printf present; else printf missing; fi"
+    )
+    probe = subprocess.run(
+        ["docker", "exec", container_id, "sh", "-c", probe_command],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout).strip()
+        raise RuntimeError(f"failed to probe desktop state artifact: {detail}")
+
+    status = probe.stdout.strip()
+    if status == "missing":
+        print("Desktop state artifact missing in container; host grader will fail closed")
+        return False
+    if status != "present":
+        raise RuntimeError(f"unexpected desktop state probe output: {status!r}")
+
+    copy_result = subprocess.run(
+        [
+            "docker",
+            "cp",
+            f"{container_id}:{STATE_ARTIFACT_IN_CONTAINER}",
+            str(temporary_copy),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    if copy_result.returncode != 0:
+        _remove_path(temporary_copy)
+        detail = (copy_result.stderr or copy_result.stdout).strip()
+        raise RuntimeError(f"failed to preserve grader-only desktop state artifact: {detail}")
+
+    temporary_copy.replace(host_state_path)
+    print(f"Preserved grader-only desktop state artifact outside agent workspace: {host_state_path}")
+    return True
 
 
 def _copy_task_workspaces_to_host() -> None:
@@ -100,19 +166,19 @@ def _copy_task_workspaces_to_host() -> None:
             )
         print(f"Preserved Docker task workspace for host grading: {host_workspace}")
 
-        # Harness-side diagnostic only. This is the same deterministic state
-        # the automated grader is expected to inspect after execution and is
-        # intentionally unavailable to the evaluated reference controller.
-        state_path = host_workspace / "desktop_baseline_state.json"
+        # Replace any same-named workspace artifact with the authoritative state
+        # kept outside the workspace during agent execution.
+        _copy_grader_state_artifact_to_host(container_id, host_workspace)
+        state_path = host_workspace / STATE_ARTIFACT_NAME
         if state_path.is_file():
             try:
                 state = json.loads(state_path.read_text(encoding="utf-8"))
             except (OSError, ValueError) as exc:
                 print(f"Desktop state diagnostic unreadable: {exc}")
             else:
-                print(f"Desktop state diagnostic after copyback: {state!r}")
+                print(f"Desktop state diagnostic after authoritative copyback: {state!r}")
         else:
-            print("Desktop state diagnostic: state file missing after copyback")
+            print("Desktop state diagnostic: authoritative state file missing after copyback")
 
 
 def _assert_container_state_before_teardown() -> None:
@@ -130,10 +196,12 @@ import json
 from pathlib import Path
 
 target = "AgentCanary desktop baseline complete"
-paths = list(Path("/tmp/scry").glob("*/agent_workspace/desktop_baseline_state.json"))
-if len(paths) != 1:
-    raise SystemExit(f"expected one task state file inside container; found {len(paths)}: {[str(p) for p in paths]}")
-path = paths[0]
+path = Path("/tmp/agentcanary-desktop/desktop_baseline_state.json")
+if not path.is_file():
+    raise SystemExit(f"expected grader-only state artifact outside agent workspace: {path}")
+workspace_state_paths = list(Path("/tmp/scry").glob("*/agent_workspace/desktop_baseline_state.json"))
+if workspace_state_paths:
+    raise SystemExit(f"state artifact leaked into agent workspace: {[str(p) for p in workspace_state_paths]}")
 try:
     state = json.loads(path.read_text(encoding="utf-8"))
 except (OSError, ValueError) as exc:

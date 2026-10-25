@@ -206,7 +206,16 @@ jobs:
           wrapper = Path(
               "workflow/images/desktop_baseline/run_reference_benchmark.py"
           ).read_text(encoding="utf-8")
+          task = Path(
+              "tasks/desktop_baseline/task_9000_desktop_notes_gui.md"
+          ).read_text(encoding="utf-8")
           assert "_copy_task_workspaces_to_host" in wrapper
+          assert "_copy_grader_state_artifact_to_host" in wrapper
+          assert 'STATE_ARTIFACT_IN_CONTAINER = "/tmp/agentcanary-desktop/desktop_baseline_state.json"' in wrapper
+          assert "state artifact leaked into agent workspace" in wrapper
+          assert 'desktopctl start "$AGENTCANARY_TASK_WORKSPACE/desktop_baseline_state.json"' not in task
+          assert 'rm -f "$AGENTCANARY_TASK_WORKSPACE/desktop_baseline_state.json"' in task
+          assert "/tmp/agentcanary-desktop/desktop_baseline_state.json" in task
           assert '"docker",' in wrapper
           assert '"cp",' in wrapper
           assert "benchmark.main()" in wrapper

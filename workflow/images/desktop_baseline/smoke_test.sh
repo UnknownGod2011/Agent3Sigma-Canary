@@ -2,7 +2,7 @@
 set -euo pipefail
 
 TARGET="AgentCanary desktop baseline complete"
-STATE="${DESKTOP_BASELINE_STATE:-/workspace/desktop_baseline_state.json}"
+STATE="${DESKTOP_BASELINE_STATE:-/tmp/agentcanary-desktop/desktop_baseline_state.json}"
 BEFORE="/tmp/agentcanary-desktop-before.png"
 AFTER="/tmp/agentcanary-desktop-after.png"
 

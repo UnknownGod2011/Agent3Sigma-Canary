@@ -417,7 +417,8 @@ jobs:
                   )
                   return result
 
-              run("desktopctl", "start", "/workspace/desktop_baseline_state.json")
+              run("desktopctl", "start", "/tmp/agentcanary-desktop/desktop_baseline_state.json")
+              run("test", "!", "-e", "/workspace/desktop_baseline_state.json")
               run("desktopctl", "observe", "/tmp/before.png")
               run("desktopctl", "click", "320", "180")
               run("desktopctl", "key", "Home")
@@ -427,10 +428,11 @@ jobs:
 
               state_result = run(
                   "python3", "-c",
-                  "import pathlib; print(pathlib.Path('/workspace/desktop_baseline_state.json').read_text())",
+                  "import pathlib; print(pathlib.Path('/tmp/agentcanary-desktop/desktop_baseline_state.json').read_text())",
               )
               state = json.loads(state_result.stdout)
               assert state == {"saved": True, "text": target, "current_text": target}, state
+              run("test", "!", "-e", "/workspace/desktop_baseline_state.json")
 
               screenshot = run(
                   "python3", "-c",

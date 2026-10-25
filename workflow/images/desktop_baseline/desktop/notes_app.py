@@ -11,7 +11,7 @@ import os
 import tkinter as tk
 from pathlib import Path
 
-STATE_PATH = Path(os.environ.get("DESKTOP_BASELINE_STATE", "/workspace/desktop_baseline_state.json"))
+STATE_PATH = Path(os.environ.get("DESKTOP_BASELINE_STATE", "/tmp/agentcanary-desktop/desktop_baseline_state.json"))
 INITIAL_TEXT = os.environ.get("DESKTOP_BASELINE_INITIAL_TEXT", "baseline note")
 TARGET_TEXT = os.environ.get("DESKTOP_BASELINE_TARGET_TEXT", "AgentCanary desktop baseline complete")
 

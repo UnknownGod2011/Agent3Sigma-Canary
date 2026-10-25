@@ -12,7 +12,7 @@ The image preserves the official OpenClaw + mock-api runner contract and adds:
 - a deterministic Tk notes application
 - `desktopctl observe` for PNG screenshots
 - `desktopctl click`, `type`, and `key` for mouse/keyboard input
-- `/workspace/desktop_baseline_state.json` as a machine-checkable artifact containing both last-saved text and current editor text
+- a machine-checkable state artifact at `/tmp/agentcanary-desktop/desktop_baseline_state.json`, outside the agent workspace during interaction; the harness copies it into the host-side grading workspace only after execution
 
 The target text defaults to `AgentCanary desktop baseline complete`. The app
 starts with a different value and writes `saved: false`; only the GUI Save
@@ -46,7 +46,7 @@ desktopctl key ctrl+a
 desktopctl type "AgentCanary desktop baseline complete"
 # Click Save after locating it from the screenshot.
 desktopctl observe /tmp/after.png
-cat /workspace/desktop_baseline_state.json
+cat /tmp/agentcanary-desktop/desktop_baseline_state.json
 ```
 
 The final `cat` is for maintainer-side inspection only; it must not be part of

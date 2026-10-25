@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Regression tests for cleanup when desktop workspace preservation fails."""
+"""Regression tests for desktop state-artifact copyback and container cleanup."""
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -46,6 +49,68 @@ class WorkspaceCopybackCleanupTests(unittest.TestCase):
         ):
             runner._stop_with_workspace_copyback()
         self.assertEqual(events, ["copyback", "stop"])
+
+    def test_authoritative_container_state_replaces_workspace_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            state_path = workspace / runner.STATE_ARTIFACT_NAME
+            state_path.write_text('{"saved": false, "text": "agent-supplied"}', encoding="utf-8")
+            events: list[list[str]] = []
+
+            def fake_run(args, **kwargs):
+                events.append(args)
+                if args[:3] == ["docker", "exec", "container-id"]:
+                    self.assertEqual(args[3:5], ["sh", "-c"])
+                    self.assertIn(runner.STATE_ARTIFACT_IN_CONTAINER, args[5])
+                    return SimpleNamespace(returncode=0, stdout="present\n", stderr="")
+                if args[:2] == ["docker", "cp"]:
+                    self.assertEqual(args[2], f"container-id:{runner.STATE_ARTIFACT_IN_CONTAINER}")
+                    destination = Path(args[3])
+                    destination.write_text(
+                        json.dumps({
+                            "saved": True,
+                            "text": "AgentCanary desktop baseline complete",
+                            "current_text": "AgentCanary desktop baseline complete",
+                        }),
+                        encoding="utf-8",
+                    )
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                raise AssertionError(f"unexpected subprocess call: {args!r}")
+
+            with patch.object(runner.subprocess, "run", side_effect=fake_run):
+                copied = runner._copy_grader_state_artifact_to_host("container-id", workspace)
+
+            self.assertTrue(copied)
+            self.assertEqual(len(events), 2)
+            self.assertEqual(events[1][:2], ["docker", "cp"])
+            self.assertEqual(
+                json.loads(state_path.read_text(encoding="utf-8")),
+                {
+                    "saved": True,
+                    "text": "AgentCanary desktop baseline complete",
+                    "current_text": "AgentCanary desktop baseline complete",
+                },
+            )
+            self.assertFalse((workspace / ".desktop_baseline_state.json.copyback").exists())
+
+    def test_missing_container_state_removes_untrusted_workspace_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            state_path = workspace / runner.STATE_ARTIFACT_NAME
+            state_path.mkdir()
+            (state_path / "fake.json").write_text('{"saved": true}', encoding="utf-8")
+
+            def fake_run(args, **kwargs):
+                self.assertEqual(args[:3], ["docker", "exec", "container-id"])
+                self.assertIn(runner.STATE_ARTIFACT_IN_CONTAINER, args[5])
+                return SimpleNamespace(returncode=0, stdout="missing\n", stderr="")
+
+            with patch.object(runner.subprocess, "run", side_effect=fake_run):
+                copied = runner._copy_grader_state_artifact_to_host("container-id", workspace)
+
+            self.assertFalse(copied)
+            self.assertFalse(state_path.exists())
+            self.assertFalse((workspace / ".desktop_baseline_state.json.copyback").exists())
 
 
 if __name__ == "__main__":

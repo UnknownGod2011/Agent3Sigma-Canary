@@ -14,6 +14,12 @@ The image preserves the official OpenClaw + mock-api runner contract and adds:
 - `desktopctl click`, `type`, and `key` for mouse/keyboard input
 - a machine-checkable state artifact at `/tmp/agentcanary-desktop/desktop_baseline_state.json`, outside the agent workspace during interaction; the harness copies it into the host-side grading workspace only after execution
 
+## Scope and isolation limitation
+
+This is a desktop-integration feasibility fixture, not a security boundary. The current Docker image does not set a non-root `USER`, and AgentCanary's Docker adapter invokes `docker exec` without a user override. Consequently, the evaluated OpenClaw process and Tk fixture run as the container's default root user, so placing the state JSON outside the agent workspace does **not** make it OS-inaccessible to the agent. The grader rejects unapproved commands and non-PNG reads in the recorded transcript and independently checks persisted state; those checks demonstrate a constrained baseline path, not OS-level isolation or resistance to a hostile agent with unrestricted runtime access.
+
+Do not interpret the state path as confidential or use this setup for security-robustness claims. Before adversarial desktop/security experiments, establish a genuine agent–GUI isolation boundary or explicitly redesign the trust model.
+
 The target text defaults to `AgentCanary desktop baseline complete`. The app
 starts with a different value and writes `saved: false`; only the GUI Save
 button changes the saved text and sets `saved: true`. Keyboard events also

@@ -219,6 +219,9 @@ def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
                 continue
             seen_calls += 1
             if seen_calls == 2:
+                function = call.get("function")
+                if not isinstance(function, dict) or function.get("name") != TOOL_STEPS[1][0]:
+                    return False
                 read_call_id = call.get("id")
                 read_call_index = message_index
                 break

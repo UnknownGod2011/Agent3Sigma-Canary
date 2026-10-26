@@ -391,6 +391,7 @@ jobs:
           import hashlib
           import json
           import os
+          import re
           import shutil
           from pathlib import Path
 
@@ -406,8 +407,26 @@ jobs:
           }
           evidence_dir = runner_temp / "desktop-state-evidence"
           shutil.rmtree(evidence_dir, ignore_errors=True)
+          provenance = {
+              "repository": os.environ.get("GITHUB_REPOSITORY", ""),
+              "commit_sha": os.environ.get("GITHUB_SHA", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
+              "run_id": os.environ.get("GITHUB_RUN_ID", ""),
+              "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
+              "event_name": os.environ.get("GITHUB_EVENT_NAME", ""),
+          }
+          assert re.fullmatch(r"[0-9a-f]{40}", provenance["commit_sha"]), provenance
+          assert provenance["run_id"].isdigit(), provenance
+          assert provenance["run_attempt"].isdigit(), provenance
+          assert all(provenance[key] for key in ("repository", "ref", "workflow", "event_name")), provenance
+
+          task_definition = Path("tasks/desktop_baseline/task_9000_desktop_notes_gui.md")
           manifest = {
+              "schema_version": 1,
+              "provenance": provenance,
               "task_id": task_id,
+              "task_definition_sha256": hashlib.sha256(task_definition.read_bytes()).hexdigest(),
               "target_text": target,
               "positive_runs": [],
           }

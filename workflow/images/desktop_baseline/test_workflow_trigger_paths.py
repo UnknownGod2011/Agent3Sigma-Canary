@@ -50,6 +50,19 @@ def main() -> None:
     assert "${{ runner.temp }}/desktop-state-evidence/**" in lifecycle_source, (
         "grader-only state evidence must be retained with the task result JSONs"
     )
+    for field in (
+        '"schema_version": 1',
+        '"repository": os.environ.get("GITHUB_REPOSITORY", "")',
+        '"commit_sha": os.environ.get("GITHUB_SHA", "")',
+        '"ref": os.environ.get("GITHUB_REF", "")',
+        '"workflow": os.environ.get("GITHUB_WORKFLOW", "")',
+        '"run_id": os.environ.get("GITHUB_RUN_ID", "")',
+        '"run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT", "")',
+        '"event_name": os.environ.get("GITHUB_EVENT_NAME", "")',
+        '"task_definition_sha256": hashlib.sha256(task_definition.read_bytes()).hexdigest()',
+    ):
+        assert field in lifecycle_source, f"evidence manifest missing provenance field: {field}"
+    print("desktop evidence manifest records source, run, and task-definition provenance")
     print("desktop grader-only state evidence retention is configured")
     print("desktop CI trigger dependency checks passed")
 

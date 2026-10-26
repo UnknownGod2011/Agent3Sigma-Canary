@@ -145,7 +145,10 @@ def main() -> None:
                 try:
                     completion_for_messages(bad_messages, created=1)
                 except ValueError as exc:
-                    assert "screenshot image payload" in str(exc)
+                    error_text = str(exc)
+                    assert "screenshot image payload" in error_text
+                    assert "wire_shape=" in error_text
+                    assert "data:image/png;base64" not in error_text
                 else:
                     raise AssertionError(
                         "stub must reject missing, malformed, unrelated, mismatched, "

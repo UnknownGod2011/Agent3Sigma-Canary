@@ -331,17 +331,16 @@ def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
     return False
 
 
-def _message_shape_summary(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Return bounded structural diagnostics without logging prompts or image bytes."""
+def _message_shape_summary(messages: list[dict[str, Any]]) -> list[list[Any]]:
+    """Return compact structural diagnostics; never include prompts or image bytes."""
     expected_path = TOOL_STEPS[0][1]["command"].split(maxsplit=2)[2]
-    summary: list[dict[str, Any]] = []
-    start_index = max(0, len(messages) - 12)
-    for index, message in enumerate(messages[-12:], start=start_index):
+    summary: list[list[Any]] = []
+    start_index = max(0, len(messages) - 6)
+    for index, message in enumerate(messages[-6:], start=start_index):
         if not isinstance(message, dict):
-            summary.append({"i": index, "kind": type(message).__name__})
+            summary.append([index, "?", type(message).__name__])
             continue
         role = message.get("role")
-        item: dict[str, Any] = {"i": index, "role": role}
         if role == "assistant":
             calls = []
             tool_calls = message.get("tool_calls")
@@ -350,58 +349,48 @@ def _message_shape_summary(messages: list[dict[str, Any]]) -> list[dict[str, Any
                     continue
                 function = call.get("function")
                 if not isinstance(function, dict):
-                    calls.append({"id": call.get("id"), "function_kind": type(function).__name__})
                     continue
+                name = function.get("name")
                 arguments = function.get("arguments")
                 if isinstance(arguments, str):
                     try:
                         arguments = json.loads(arguments)
                     except (json.JSONDecodeError, TypeError):
                         arguments = None
-                call_summary: dict[str, Any] = {
-                    "id": call.get("id"),
-                    "name": function.get("name"),
-                    "arguments_kind": type(arguments).__name__,
-                }
-                if isinstance(arguments, dict):
-                    call_summary["argument_keys"] = sorted(str(key) for key in arguments)
-                    if function.get("name") == "exec":
-                        command = arguments.get("command")
-                        tokens = command.split() if isinstance(command, str) else []
-                        call_summary["desktopctl_operation"] = (
-                            tokens[1] if len(tokens) > 1 and tokens[0] == "desktopctl" else None
-                        )
-                    elif function.get("name") == "read":
-                        call_summary["path_matches_observation"] = (
-                            arguments.get("path") == expected_path
-                        )
-                calls.append(call_summary)
-            item["tool_calls"] = calls
+                short_id = str(call.get("id", ""))[-8:]
+                if name == "exec" and isinstance(arguments, dict):
+                    command = arguments.get("command")
+                    tokens = command.split() if isinstance(command, str) else []
+                    operation = tokens[1] if len(tokens) > 1 and tokens[0] == "desktopctl" else None
+                    calls.append([short_id, name, operation])
+                elif name == "read" and isinstance(arguments, dict):
+                    calls.append([short_id, name, arguments.get("path") == expected_path])
+                else:
+                    calls.append([short_id, name])
+            summary.append([index, "a", calls])
         elif role in {"tool", "user"}:
             content = message.get("content")
-            item["content_kind"] = (
-                "string" if isinstance(content, str)
-                else "list" if isinstance(content, list)
-                else type(content).__name__
-            )
-            if isinstance(content, list):
-                item["block_types"] = [
-                    block.get("type", "unknown") if isinstance(block, dict) else type(block).__name__
-                    for block in content
-                ]
+            kind = "s" if isinstance(content, str) else "l" if isinstance(content, list) else type(content).__name__
+            has_png = contains_image_payload(content)
             text_content = _message_text(content)
-            item["text_length"] = len(text_content)
-            item["has_valid_png_payload"] = contains_image_payload(content)
             if role == "tool":
-                item["tool_call_id"] = message.get("tool_call_id")
-                item["text_matches_observed_path"] = text_content.strip() == expected_path
+                summary.append([
+                    index, "t", str(message.get("tool_call_id", ""))[-8:], kind,
+                    has_png, text_content.strip() == expected_path,
+                ])
             else:
-                item["image_markers"] = [
-                    line[:120]
-                    for line in text_content.splitlines()
-                    if "image(s) from tool result" in line.lower()
-                ][:3]
-        summary.append(item)
+                block_types = [
+                    block.get("type", "?") if isinstance(block, dict) else type(block).__name__
+                    for block in content
+                ] if isinstance(content, list) else []
+                marker = next(
+                    (line[:48] for line in text_content.splitlines()
+                     if "image(s) from tool result" in line.lower()),
+                    "",
+                )
+                summary.append([index, "u", kind, block_types, has_png, marker])
+        else:
+            summary.append([index, str(role)[:8]])
     return summary
 
 

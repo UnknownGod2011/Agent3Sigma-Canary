@@ -61,7 +61,7 @@ def _history(
             messages.append({
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Image(s) from tool result #1 (read):"},
+                    {"type": "text", "text": "Attached image(s) from tool result:"},
                     {"type": "image_url", "image_url": {"url": image_url or _data_url()}},
                 ],
             })
@@ -130,6 +130,17 @@ def main() -> None:
             wrong_image_marker = _history(index, screenshot_image=True)
             wrong_image_marker[5]["content"][0]["text"] = "Image(s) from tool result #2 (exec):"
 
+            detached_image_carrier = _history(index, screenshot_image=True)
+            detached_image_carrier.insert(5, {
+                "role": "user",
+                "content": "Unrelated interstitial message.",
+            })
+
+            legacy_labeled_carrier = _history(index, screenshot_image=True)
+            legacy_labeled_carrier[5]["content"][0]["text"] = "Image(s) from tool result #1 (read):"
+            legacy_result = completion_for_messages(legacy_labeled_carrier, created=1)
+            assert legacy_result["choices"][0]["message"]["tool_calls"][0]["function"]["name"] == "exec"
+
             for bad_messages in (
                 _history(index),
                 _history(index, screenshot_image=True, image_url="data:image/png;base64,AA=="),
@@ -141,6 +152,7 @@ def main() -> None:
                 failed_observation,
                 mismatched_read_path,
                 wrong_image_marker,
+                detached_image_carrier,
             ):
                 try:
                     completion_for_messages(bad_messages, created=1)

@@ -318,17 +318,29 @@ def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
         ),
         len(messages),
     )
-    expected_marker = "image(s) from tool result #1 (read):"
-    for message in messages[read_result_index + 1:next_assistant_index]:
-        if not isinstance(message, dict) or message.get("role") != "user":
-            continue
-        content = message.get("content")
-        if (
-            expected_marker in _message_text(content).lower()
-            and contains_image_payload(content)
-        ):
-            return True
-    return False
+    # The installed OpenClaw adapter emits a generic
+    # "Attached image(s) from tool result:" carrier. Bind it by strict
+    # adjacency to the uniquely correlated successful read result above. If an
+    # adapter supplies an explicit source index, require the expected read label.
+    carrier_index = read_result_index + 1
+    if carrier_index >= next_assistant_index:
+        return False
+    carrier = messages[carrier_index]
+    if not isinstance(carrier, dict) or carrier.get("role") != "user":
+        return False
+    content = carrier.get("content")
+    marker_lines = [
+        line.strip().lower()
+        for line in _message_text(content).splitlines()
+        if "image(s) from tool result" in line.lower()
+    ]
+    if len(marker_lines) != 1:
+        return False
+    marker = marker_lines[0]
+    expected_label = "image(s) from tool result #1 (read):"
+    if "#" in marker and marker != expected_label:
+        return False
+    return marker.endswith(":") and contains_image_payload(content)
 
 
 def _message_shape_summary(messages: list[dict[str, Any]]) -> list[list[Any]]:

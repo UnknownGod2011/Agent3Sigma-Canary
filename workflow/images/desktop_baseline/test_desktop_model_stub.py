@@ -130,6 +130,9 @@ def main() -> None:
             wrong_image_marker = _history(index, screenshot_image=True)
             wrong_image_marker[5]["content"][0]["text"] = "Image(s) from tool result #2 (exec):"
 
+            malformed_image_marker = _history(index, screenshot_image=True)
+            malformed_image_marker[5]["content"][0]["text"] = "Unrelated image(s) from tool result:"
+
             detached_image_carrier = _history(index, screenshot_image=True)
             detached_image_carrier.insert(5, {
                 "role": "user",
@@ -152,6 +155,7 @@ def main() -> None:
                 failed_observation,
                 mismatched_read_path,
                 wrong_image_marker,
+                malformed_image_marker,
                 detached_image_carrier,
             ):
                 try:

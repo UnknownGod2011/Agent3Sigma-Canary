@@ -216,11 +216,12 @@ def _message_text(content: Any) -> str:
 def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
     """Require the observed screenshot to reach the provider before GUI input.
 
-    OpenClaw's OpenAI Chat Completions adapter may move image blocks from a
+    OpenClaw's OpenAI Chat Completions adapter moves image blocks from a
     toolResult into a following user message labelled
-    "Image(s) from tool result #1 (read):". Accept that documented wire shape,
-    but only when it follows the matching read result. Also require the
-    successful observe result and exact same path for observe and read.
+    "Attached image(s) from tool result:". Also accept the legacy explicit
+    "Image(s) from tool result #1 (read):" label, but only when it follows
+    the matching read result. Require a successful observe and the exact same
+    path for observe and read.
     """
     if not isinstance(messages, list):
         return False
@@ -337,10 +338,13 @@ def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
     if len(marker_lines) != 1:
         return False
     marker = marker_lines[0]
-    expected_label = "image(s) from tool result #1 (read):"
-    if "#" in marker and marker != expected_label:
+    allowed_labels = {
+        "attached image(s) from tool result:",
+        "image(s) from tool result #1 (read):",
+    }
+    if marker not in allowed_labels:
         return False
-    return marker.endswith(":") and contains_image_payload(content)
+    return contains_image_payload(content)
 
 
 def _message_shape_summary(messages: list[dict[str, Any]]) -> list[list[Any]]:

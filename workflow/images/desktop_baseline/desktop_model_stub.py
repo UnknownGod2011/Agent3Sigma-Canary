@@ -2,13 +2,17 @@
 """Credential-free OpenAI-compatible provider stub for desktop integration CI.
 
 This is a deterministic tool-loop fixture, not an autonomous model. It exercises
-the installed OpenClaw CLI and refuses the first GUI action unless the screenshot
-image payload appears in the provider request.
+the installed OpenClaw CLI and refuses the first GUI action unless a valid
+800x600 PNG screenshot payload appears in the provider request.
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import json
+import struct
 import time
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -28,29 +32,160 @@ TOOL_STEPS: tuple[tuple[str, dict[str, str]], ...] = (
 )
 
 
+def _valid_png_bytes(image_bytes: bytes) -> bool:
+    """Accept only a decodable, CRC-checked 800x600 RGB/RGBA PNG screenshot."""
+    if (
+        not image_bytes
+        or len(image_bytes) > 8 * 1024 * 1024
+        or image_bytes[:8] != b"\x89PNG\r\n\x1a\n"
+    ):
+        return False
+
+    offset = 8
+    seen_ihdr = False
+    seen_idat = False
+    idat_ended = False
+    seen_iend = False
+    idat_data = bytearray()
+    width = height = bit_depth = color_type = None
+    chunks_seen = 0
+
+    while offset < len(image_bytes):
+        chunks_seen += 1
+        if chunks_seen > 10000 or offset + 12 > len(image_bytes):
+            return False
+        chunk_length = struct.unpack(">I", image_bytes[offset:offset + 4])[0]
+        chunk_type = image_bytes[offset + 4:offset + 8]
+        chunk_end = offset + 12 + chunk_length
+        if chunk_end > len(image_bytes):
+            return False
+        chunk_data = image_bytes[offset + 8:offset + 8 + chunk_length]
+        stored_crc = struct.unpack(">I", image_bytes[offset + 8 + chunk_length:chunk_end])[0]
+        if (zlib.crc32(chunk_type + chunk_data) & 0xFFFFFFFF) != stored_crc:
+            return False
+        if (
+            len(chunk_type) != 4
+            or not all((65 <= byte <= 90) or (97 <= byte <= 122) for byte in chunk_type)
+            or chunk_type[2] & 0x20
+        ):
+            return False
+
+        if not seen_ihdr:
+            if chunk_type != b"IHDR" or chunk_length != 13:
+                return False
+            width, height, bit_depth, color_type, compression, filter_method, interlace = struct.unpack(
+                ">IIBBBBB", chunk_data
+            )
+            if (
+                width != 800
+                or height != 600
+                or bit_depth != 8
+                or color_type not in (2, 6)
+                or compression != 0
+                or filter_method != 0
+                or interlace != 0
+            ):
+                return False
+            seen_ihdr = True
+        elif chunk_type == b"IHDR":
+            return False
+
+        if chunk_type == b"IDAT":
+            if idat_ended:
+                return False
+            seen_idat = True
+            idat_data.extend(chunk_data)
+        elif seen_idat:
+            idat_ended = True
+
+        if chunk_type not in {b"IHDR", b"IDAT", b"IEND", b"PLTE"}:
+            # Unknown critical chunks can change how pixels must be decoded.
+            if not (chunk_type[0] & 0x20):
+                return False
+
+        if chunk_type == b"IEND":
+            if chunk_length != 0 or not seen_idat:
+                return False
+            seen_iend = True
+            offset = chunk_end
+            break
+        offset = chunk_end
+
+    if not (
+        seen_ihdr
+        and seen_idat
+        and seen_iend
+        and offset == len(image_bytes)
+        and idat_data
+    ):
+        return False
+
+    channels = 3 if color_type == 2 else 4
+    row_bytes = width * channels
+    expected_size = (row_bytes + 1) * height
+    try:
+        decoder = zlib.decompressobj()
+        raw = decoder.decompress(bytes(idat_data), expected_size + 1)
+        if (
+            len(raw) != expected_size
+            or not decoder.eof
+            or decoder.unused_data
+            or decoder.unconsumed_tail
+            or decoder.flush()
+        ):
+            return False
+    except zlib.error:
+        return False
+
+    stride = row_bytes + 1
+    return all(raw[row * stride] <= 4 for row in range(height))
+
+
+def _valid_png_base64(data: Any) -> bool:
+    if not isinstance(data, str) or not data or len(data) > 12 * 1024 * 1024:
+        return False
+    try:
+        image_bytes = base64.b64decode(data, validate=True)
+    except (ValueError, binascii.Error):
+        return False
+    return _valid_png_bytes(image_bytes)
+
+
+def _valid_png_data_url(url: str) -> bool:
+    header, separator, payload = url.partition(",")
+    return bool(
+        separator
+        and header.lower() == "data:image/png;base64"
+        and _valid_png_base64(payload)
+    )
+
+
 def contains_image_payload(value: Any) -> bool:
-    """Require actual image bytes encoded as a data URL or typed base64 part."""
+    """Require actual decodable screenshot bytes, not just an image MIME label."""
     if isinstance(value, dict):
         image_url = value.get("image_url")
         if isinstance(image_url, dict):
             url = image_url.get("url")
-            if isinstance(url, str) and url.startswith("data:image/"):
+            if isinstance(url, str) and _valid_png_data_url(url):
                 return True
         url = value.get("url")
-        if isinstance(url, str) and url.startswith("data:image/"):
+        if isinstance(url, str) and _valid_png_data_url(url):
             return True
         data = value.get("data")
         mime = value.get("mimeType") or value.get("mime_type") or value.get("media_type")
-        if isinstance(data, str) and isinstance(mime, str) and mime.startswith("image/"):
+        if isinstance(mime, str) and mime.lower() == "image/png" and _valid_png_base64(data):
             return True
         source = value.get("source")
         if isinstance(source, dict) and source.get("type") == "base64":
-            if isinstance(source.get("data"), str) and str(source.get("media_type", "")).startswith("image/"):
+            if (
+                str(source.get("media_type", "")).lower() == "image/png"
+                and _valid_png_base64(source.get("data"))
+            ):
                 return True
         return any(contains_image_payload(item) for item in value.values())
     if isinstance(value, list):
         return any(contains_image_payload(item) for item in value)
-    return isinstance(value, str) and value.startswith("data:image/")
+    return isinstance(value, str) and _valid_png_data_url(value)
 
 
 def tool_call_count(messages: list[dict[str, Any]]) -> int:
@@ -108,7 +243,8 @@ def stream_chunks(completion: dict[str, Any]) -> list[dict[str, Any]]:
         "created": completion["created"],
         "model": completion["model"],
     }
-    chunks = [{**base, "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}]}]
+    chunks = [{"id": base["id"], "object": base["object"], "created": base["created"], "model": base["model"],
+               "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}]}]
     tool_calls = message.get("tool_calls") or []
     if tool_calls:
         call = tool_calls[0]

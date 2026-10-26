@@ -432,6 +432,34 @@ jobs:
           }
           expected_state_paths = set()
           validated_states = []
+          tool_sequences = {}
+
+          def normalized_tool_sequence(result, label):
+              transcript = result.get("transcript", [])
+              assert isinstance(transcript, list), (label, "transcript is not a list")
+              calls = []
+              call_ids = set()
+              for event in transcript:
+                  if not isinstance(event, dict) or event.get("type") != "message":
+                      continue
+                  message = event.get("message", {})
+                  if not isinstance(message, dict) or message.get("role") != "assistant":
+                      continue
+                  items = message.get("content", [])
+                  assert isinstance(items, list), (label, "assistant content is not a list")
+                  for item in items:
+                      if not isinstance(item, dict) or item.get("type") != "toolCall":
+                          continue
+                      call_id = item.get("id")
+                      name = item.get("name")
+                      arguments = item.get("arguments")
+                      assert isinstance(call_id, str) and call_id and call_id not in call_ids, (label, call_id)
+                      assert isinstance(name, str) and isinstance(arguments, dict), (label, item)
+                      call_ids.add(call_id)
+                      calls.append({"name": name, "arguments": arguments})
+              assert calls, (label, "no assistant tool calls found")
+              encoded = json.dumps(calls, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+              return calls, hashlib.sha256(encoded).hexdigest()
 
           def checked_workspace(raw_path, label):
               assert isinstance(raw_path, str), (label, raw_path)
@@ -456,6 +484,9 @@ jobs:
               assert grading.get("score") == 1.0 and grading.get("max_score") == 1.0, (label, grading)
               assert grading.get("breakdown", {}).get("desktop_baseline_valid") == 1.0, (label, grading)
 
+              calls, call_digest = normalized_tool_sequence(result, label)
+              tool_sequences[label] = calls
+
               workspace = checked_workspace(result.get("workspace"), label)
               assert workspace.is_dir(), (label, workspace)
               state_path = workspace / "desktop_baseline_state.json"
@@ -464,7 +495,19 @@ jobs:
               state = json.loads(state_bytes)
               assert state == {"current_text": target, "saved": True, "text": target}, (label, state)
               expected_state_paths.add(state_path)
-              validated_states.append((label, result_path, result_bytes, state_path, state_bytes))
+              validated_states.append((label, result_path, result_bytes, state_path, state_bytes, call_digest))
+
+          for first, repeat in (
+              ("reference-first", "reference-repeat"),
+              ("openclaw-stub-first", "openclaw-stub-repeat"),
+          ):
+              assert tool_sequences[first] == tool_sequences[repeat], (
+                  "repeated desktop runs produced different ordered tool-call sequences",
+                  first,
+                  repeat,
+                  tool_sequences[first],
+                  tool_sequences[repeat],
+              )
 
           actual_state_paths = set(workspace_root.glob("*/agent_workspace/desktop_baseline_state.json"))
           assert actual_state_paths == expected_state_paths, {
@@ -493,7 +536,7 @@ jobs:
           )
 
           evidence_dir.mkdir(parents=True)
-          for label, result_path, result_bytes, state_path, state_bytes in validated_states:
+          for label, result_path, result_bytes, state_path, state_bytes, call_digest in validated_states:
               state_name = f"{label}.json"
               (evidence_dir / state_name).write_bytes(state_bytes)
               manifest["positive_runs"].append({
@@ -502,6 +545,7 @@ jobs:
                   "result_sha256": hashlib.sha256(result_bytes).hexdigest(),
                   "state_file": state_name,
                   "state_sha256": hashlib.sha256(state_bytes).hexdigest(),
+                  "tool_sequence_sha256": call_digest,
               })
 
           manifest["negative_control"] = {
@@ -514,7 +558,7 @@ jobs:
               json.dumps(manifest, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",
           )
-          print("preserved four grader-only desktop state files and hashes; negative-control state remains absent from host workspace")
+          print("preserved four grader-only desktop state files, hashes, and repeatable tool-call sequences; negative-control state remains absent from host workspace")
           PY
 
       - name: Upload deterministic desktop lifecycle evidence

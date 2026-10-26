@@ -198,11 +198,53 @@ def tool_call_count(messages: list[dict[str, Any]]) -> int:
     )
 
 
+def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
+    """Require a valid screenshot in the tool result for the second tool call.
+
+    The deterministic plan's second call is the screenshot-reading `read`
+    operation. Inspect only its matching tool result; images elsewhere in the
+    conversation must not satisfy this gate.
+    """
+    seen_calls = 0
+    read_call_id = None
+    read_call_index = -1
+    for message_index, message in enumerate(messages):
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        tool_calls = message.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            continue
+        for call in tool_calls:
+            if not isinstance(call, dict):
+                continue
+            seen_calls += 1
+            if seen_calls == 2:
+                read_call_id = call.get("id")
+                read_call_index = message_index
+                break
+        if read_call_id is not None:
+            break
+
+    if not isinstance(read_call_id, str) or not read_call_id:
+        return False
+    matching_results = [
+        message
+        for index, message in enumerate(messages)
+        if index > read_call_index
+        and isinstance(message, dict)
+        and message.get("role") == "tool"
+        and message.get("tool_call_id") == read_call_id
+    ]
+    return len(matching_results) == 1 and contains_image_payload(
+        matching_results[0].get("content")
+    )
+
+
 def completion_for_messages(messages: list[dict[str, Any]], *, created: int | None = None) -> dict[str, Any]:
     if not isinstance(messages, list):
         raise ValueError("messages must be a list")
     step = tool_call_count(messages)
-    if step == 2 and not contains_image_payload(messages):
+    if step == 2 and not screenshot_read_response_has_image(messages):
         raise ValueError("screenshot image payload was not returned to the model before GUI action")
     response: dict[str, Any] = {
         "id": f"chatcmpl-desktop-stub-{step}",

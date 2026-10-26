@@ -113,5 +113,39 @@ class WorkspaceCopybackCleanupTests(unittest.TestCase):
             self.assertFalse((workspace / ".desktop_baseline_state.json.copyback").exists())
 
 
+    def test_multiple_workspace_candidates_fail_closed_before_copyback(self) -> None:
+        events: list[list[str]] = []
+
+        def fake_run(args, **kwargs):
+            events.append(args)
+            self.assertEqual(args[:3], ["docker", "exec", "container-id"])
+            self.assertIn("find", args)
+            return SimpleNamespace(
+                returncode=0,
+                stdout=(
+                    "/tmp/scry/task-1/agent_workspace"
+                    + chr(10)
+                    + "/tmp/scry/agent-created/agent_workspace"
+                    + chr(10)
+                ),
+                stderr="",
+            )
+
+        with (
+            patch.object(runner.docker, "get_container_id", return_value="container-id"),
+            patch.object(runner.subprocess, "run", side_effect=fake_run),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "expected exactly one Docker task agent_workspace before grading, found 2",
+            ):
+                runner._copy_task_workspaces_to_host()
+
+        # Fail closed before any docker cp can move agent-controlled workspace
+        # contents into the host's grading area.
+        self.assertEqual(len(events), 1)
+        self.assertNotIn("cp", events[0])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

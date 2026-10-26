@@ -39,12 +39,14 @@ def _history(
     messages = [{"role": "user", "content": "Complete the desktop notes task."}]
     for index in range(tool_calls):
         call_id = f"call-{index}"
+        tool_name = "read" if index == 1 else "exec"
+        arguments = {"path": "/tmp/agentcanary-desktop/screen.png"} if index == 1 else {}
         messages.append({
             "role": "assistant",
             "tool_calls": [{
                 "id": call_id,
                 "type": "function",
-                "function": {"name": "exec", "arguments": "{}"},
+                "function": {"name": tool_name, "arguments": json.dumps(arguments)},
             }],
         })
         content = "tool completed"
@@ -86,16 +88,39 @@ def main() -> None:
     for index, (expected_name, expected_args) in enumerate(expected):
         messages = _history(index, screenshot_image=index >= 2)
         if index == 2:
+            unrelated_user_image = _history(index)
+            unrelated_user_image[0]["content"] = [
+                {"type": "image_url", "image_url": {"url": _data_url()}}
+            ]
+
+            unrelated_tool_image = _history(index)
+            unrelated_tool_image[2]["content"] = [
+                {"type": "image_url", "image_url": {"url": _data_url()}}
+            ]
+
+            mismatched_tool_id = _history(index, screenshot_image=True)
+            mismatched_tool_id[4]["tool_call_id"] = "unmatched-call-id"
+
+            duplicate_tool_result = _history(index, screenshot_image=True)
+            duplicate_tool_result.append(dict(duplicate_tool_result[4]))
+
             for bad_messages in (
                 _history(index),
                 _history(index, screenshot_image=True, image_url="data:image/png;base64,AA=="),
+                unrelated_user_image,
+                unrelated_tool_image,
+                mismatched_tool_id,
+                duplicate_tool_result,
             ):
                 try:
                     completion_for_messages(bad_messages, created=1)
                 except ValueError as exc:
                     assert "screenshot image payload" in str(exc)
                 else:
-                    raise AssertionError("stub must reject missing or malformed screenshot payload")
+                    raise AssertionError(
+                        "stub must reject missing, malformed, unrelated, mismatched, "
+                        "or duplicate screenshot tool results"
+                    )
         completion = completion_for_messages(messages, created=1)
         choice = completion["choices"][0]
         assert choice["finish_reason"] == "tool_calls"

@@ -86,17 +86,24 @@ case "${1:-}" in
     [[ $# -eq 3 ]] || usage
     focus_fixture
     xdotool mousemove --sync "$2" "$3" click 1
+    # X11 input delivery is asynchronous relative to the Tk event loop. Give
+    # the application time to process the click before the caller proceeds.
+    sleep 0.5
     ;;
   type)
     [[ $# -ge 2 ]] || usage
     focus_fixture
     shift
-    xdotool type --delay 15 --clearmodifiers -- "$*"
+    # Throttle key delivery and let Tk process the queued key-release
+    # events before a subsequent Save click can overtake them.
+    xdotool type --delay 25 --clearmodifiers -- "$*"
+    sleep 0.5
     ;;
   key)
     [[ $# -eq 2 ]] || usage
     focus_fixture
     xdotool key --clearmodifiers "$2"
+    sleep 0.15
     ;;
   stop)
     [[ $# -eq 1 ]] || usage

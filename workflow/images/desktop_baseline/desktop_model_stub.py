@@ -198,16 +198,34 @@ def tool_call_count(messages: list[dict[str, Any]]) -> int:
     )
 
 
-def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
-    """Require a valid screenshot in the tool result for the second tool call.
+def _message_text(content: Any) -> str:
+    """Extract text blocks from a provider-facing message without stringifying images."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            item.get("text", "")
+            for item in content
+            if isinstance(item, dict)
+            and item.get("type") == "text"
+            and isinstance(item.get("text"), str)
+        )
+    return ""
 
-    The deterministic plan's second call is the screenshot-reading `read`
-    operation. Inspect only its matching tool result; images elsewhere in the
-    conversation must not satisfy this gate.
+
+def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
+    """Require the observed screenshot to reach the provider before GUI input.
+
+    OpenClaw's OpenAI Chat Completions adapter may move image blocks from a
+    toolResult into a following user message labelled
+    "Image(s) from tool result #1 (read):". Accept that documented wire shape,
+    but only when it follows the matching read result. Also require the
+    successful observe result and exact same path for observe and read.
     """
-    seen_calls = 0
-    read_call_id = None
-    read_call_index = -1
+    if not isinstance(messages, list):
+        return False
+
+    calls: list[tuple[int, Any, Any, dict[str, Any]]] = []
     for message_index, message in enumerate(messages):
         if not isinstance(message, dict) or message.get("role") != "assistant":
             continue
@@ -217,30 +235,100 @@ def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
         for call in tool_calls:
             if not isinstance(call, dict):
                 continue
-            seen_calls += 1
-            if seen_calls == 2:
-                function = call.get("function")
-                if not isinstance(function, dict) or function.get("name") != TOOL_STEPS[1][0]:
+            function = call.get("function")
+            if not isinstance(function, dict):
+                return False
+            name = function.get("name")
+            arguments = function.get("arguments")
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except (json.JSONDecodeError, TypeError):
                     return False
-                read_call_id = call.get("id")
-                read_call_index = message_index
-                break
-        if read_call_id is not None:
-            break
+            if not isinstance(arguments, dict):
+                return False
+            calls.append((message_index, call.get("id"), name, arguments))
 
-    if not isinstance(read_call_id, str) or not read_call_id:
+    # This gate runs on the provider request after the second planned tool
+    # call. The deterministic fixture intentionally emits one call per turn.
+    if len(calls) != 2:
         return False
-    matching_results = [
-        message
+
+    observe_index, observe_id, observe_name, observe_args = calls[0]
+    read_index, read_id, read_name, read_args = calls[1]
+    observe_command = TOOL_STEPS[0][1]["command"]
+    observe_prefix = "desktopctl observe "
+    if not observe_command.startswith(observe_prefix):
+        return False
+    screenshot_path = observe_command[len(observe_prefix):]
+    if (
+        not screenshot_path
+        or observe_name != "exec"
+        or observe_args.get("command") != observe_command
+        or read_name != "read"
+        or read_args != {"path": screenshot_path}
+        or not isinstance(observe_id, str)
+        or not observe_id
+        or not isinstance(read_id, str)
+        or not read_id
+        or observe_id == read_id
+    ):
+        return False
+
+    observe_results = [
+        (index, message)
         for index, message in enumerate(messages)
-        if index > read_call_index
+        if observe_index < index < read_index
         and isinstance(message, dict)
         and message.get("role") == "tool"
-        and message.get("tool_call_id") == read_call_id
+        and message.get("tool_call_id") == observe_id
     ]
-    return len(matching_results) == 1 and contains_image_payload(
-        matching_results[0].get("content")
+    if (
+        len(observe_results) != 1
+        or _message_text(observe_results[0][1].get("content")).strip() != screenshot_path
+    ):
+        return False
+
+    read_results = [
+        (index, message)
+        for index, message in enumerate(messages)
+        if index > read_index
+        and isinstance(message, dict)
+        and message.get("role") == "tool"
+        and message.get("tool_call_id") == read_id
+    ]
+    if len(read_results) != 1:
+        return False
+
+    read_result_index, read_result = read_results[0]
+    read_content = read_result.get("content")
+    # Some compatible providers preserve media on the tool result itself.
+    if contains_image_payload(read_content):
+        return True
+
+    # OpenClaw's OpenAI Chat Completions adapter relocates tool-result images
+    # into a user message. The marker binds this image carrier to the read
+    # result above; an image elsewhere in history is not sufficient.
+    next_assistant_index = next(
+        (
+            index
+            for index in range(read_result_index + 1, len(messages))
+            if isinstance(messages[index], dict)
+            and messages[index].get("role") == "assistant"
+        ),
+        len(messages),
     )
+    expected_marker = "image(s) from tool result #1 (read):"
+    for message in messages[read_result_index + 1:next_assistant_index]:
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if (
+            expected_marker in _message_text(content).lower()
+            and contains_image_payload(content)
+        ):
+            return True
+    return False
 
 
 def completion_for_messages(messages: list[dict[str, Any]], *, created: int | None = None) -> dict[str, Any]:

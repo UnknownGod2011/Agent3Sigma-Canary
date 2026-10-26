@@ -36,11 +36,12 @@ def _history(
     screenshot_image: bool = False,
     image_url: str | None = None,
 ) -> list[dict]:
+    """Build OpenAI Chat Completions messages, including OpenClaw's image carrier."""
     messages = [{"role": "user", "content": "Complete the desktop notes task."}]
+    screenshot_path = TOOL_STEPS[0][1]["command"].split(maxsplit=2)[2]
     for index in range(tool_calls):
         call_id = f"call-{index}"
-        tool_name = "read" if index == 1 else "exec"
-        arguments = {"path": "/tmp/agentcanary-desktop/screen.png"} if index == 1 else {}
+        tool_name, arguments = TOOL_STEPS[index]
         messages.append({
             "role": "assistant",
             "tool_calls": [{
@@ -49,13 +50,21 @@ def _history(
                 "function": {"name": tool_name, "arguments": json.dumps(arguments)},
             }],
         })
-        content = "tool completed"
-        if screenshot_image and index == 1:
-            content = [
-                {"type": "text", "text": "Screenshot read"},
-                {"type": "image_url", "image_url": {"url": image_url or _data_url()}},
-            ]
+        if index == 0:
+            content = screenshot_path
+        elif index == 1 and screenshot_image:
+            content = "(see attached image)"
+        else:
+            content = "tool completed"
         messages.append({"role": "tool", "tool_call_id": call_id, "content": content})
+        if index == 1 and screenshot_image:
+            messages.append({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Image(s) from tool result #1 (read):"},
+                    {"type": "image_url", "image_url": {"url": image_url or _data_url()}},
+                ],
+            })
     return messages
 
 
@@ -90,12 +99,15 @@ def main() -> None:
         if index == 2:
             unrelated_user_image = _history(index)
             unrelated_user_image[0]["content"] = [
-                {"type": "image_url", "image_url": {"url": _data_url()}}
+                {"type": "text", "text": "Complete the desktop notes task."},
+                {"type": "image_url", "image_url": {"url": _data_url()}},
             ]
 
             unrelated_tool_image = _history(index)
+            screenshot_path = TOOL_STEPS[0][1]["command"].split(maxsplit=2)[2]
             unrelated_tool_image[2]["content"] = [
-                {"type": "image_url", "image_url": {"url": _data_url()}}
+                {"type": "text", "text": screenshot_path},
+                {"type": "image_url", "image_url": {"url": _data_url()}},
             ]
 
             mismatched_tool_id = _history(index, screenshot_image=True)
@@ -107,6 +119,17 @@ def main() -> None:
             duplicate_tool_result = _history(index, screenshot_image=True)
             duplicate_tool_result.append(dict(duplicate_tool_result[4]))
 
+            failed_observation = _history(index, screenshot_image=True)
+            failed_observation[2]["content"] = "Command failed while capturing " + screenshot_path
+
+            mismatched_read_path = _history(index, screenshot_image=True)
+            mismatched_read_path[3]["tool_calls"][0]["function"]["arguments"] = json.dumps({
+                "path": "/tmp/agentcanary-desktop/other.png"
+            })
+
+            wrong_image_marker = _history(index, screenshot_image=True)
+            wrong_image_marker[5]["content"][0]["text"] = "Image(s) from tool result #2 (exec):"
+
             for bad_messages in (
                 _history(index),
                 _history(index, screenshot_image=True, image_url="data:image/png;base64,AA=="),
@@ -115,6 +138,9 @@ def main() -> None:
                 mismatched_tool_id,
                 wrong_read_tool,
                 duplicate_tool_result,
+                failed_observation,
+                mismatched_read_path,
+                wrong_image_marker,
             ):
                 try:
                     completion_for_messages(bad_messages, created=1)
@@ -123,8 +149,16 @@ def main() -> None:
                 else:
                     raise AssertionError(
                         "stub must reject missing, malformed, unrelated, mismatched, "
-                        "or duplicate screenshot tool results"
+                        "failed-observation, or duplicate screenshot evidence"
                     )
+
+            # Legacy-compatible providers may keep image data on the tool result.
+            direct_tool_image = _history(index)
+            direct_tool_image[4]["content"] = [
+                {"type": "image_url", "image_url": {"url": _data_url()}}
+            ]
+            direct_result = completion_for_messages(direct_tool_image, created=1)
+            assert direct_result["choices"][0]["message"]["tool_calls"][0]["function"]["name"] == "exec"
         completion = completion_for_messages(messages, created=1)
         choice = completion["choices"][0]
         assert choice["finish_reason"] == "tool_calls"

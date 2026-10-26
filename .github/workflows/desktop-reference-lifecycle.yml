@@ -381,6 +381,123 @@ jobs:
           print("reference controller GUI-boundary assertions passed")
           PY
 
+      - name: Verify and package grader-only desktop state evidence
+        if: success()
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          runner_temp = Path(os.environ["RUNNER_TEMP"])
+          workspace_root = Path("/tmp/scry")
+          task_id = "task_9000_desktop_notes_gui"
+          target = "AgentCanary desktop baseline complete"
+          positive_runs = {
+              "reference-first": "desktop-reference-results",
+              "reference-repeat": "desktop-reference-results-repeat",
+              "openclaw-stub-first": "desktop-openclaw-stub-first",
+              "openclaw-stub-repeat": "desktop-openclaw-stub-repeat",
+          }
+          evidence_dir = runner_temp / "desktop-state-evidence"
+          shutil.rmtree(evidence_dir, ignore_errors=True)
+          manifest = {
+              "task_id": task_id,
+              "target_text": target,
+              "positive_runs": [],
+          }
+          expected_state_paths = set()
+          validated_states = []
+
+          def checked_workspace(raw_path, label):
+              assert isinstance(raw_path, str), (label, raw_path)
+              workspace = Path(raw_path)
+              assert workspace.is_absolute() and workspace == workspace.resolve(strict=False), (label, workspace)
+              try:
+                  relative = workspace.relative_to(workspace_root)
+              except ValueError as exc:
+                  raise AssertionError(f"{label}: workspace escaped {workspace_root}: {workspace}") from exc
+              assert len(relative.parts) == 2 and relative.parts[-1] == "agent_workspace", (label, relative)
+              assert not workspace_root.is_symlink() and not workspace.parent.is_symlink() and not workspace.is_symlink(), (label, workspace)
+              return workspace
+
+          for label, directory in positive_runs.items():
+              candidates = list((runner_temp / directory).glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+              assert len(candidates) == 1, (label, candidates)
+              result_path = candidates[0]
+              result_bytes = result_path.read_bytes()
+              result = json.loads(result_bytes)
+              grading = result.get("grading", {})
+              assert result.get("task_id") == task_id, (label, result.get("task_id"))
+              assert grading.get("score") == 1.0 and grading.get("max_score") == 1.0, (label, grading)
+              assert grading.get("breakdown", {}).get("desktop_baseline_valid") == 1.0, (label, grading)
+
+              workspace = checked_workspace(result.get("workspace"), label)
+              assert workspace.is_dir(), (label, workspace)
+              state_path = workspace / "desktop_baseline_state.json"
+              assert state_path.is_file() and not state_path.is_symlink(), (label, state_path)
+              state_bytes = state_path.read_bytes()
+              state = json.loads(state_bytes)
+              assert state == {"current_text": target, "saved": True, "text": target}, (label, state)
+              expected_state_paths.add(state_path)
+              validated_states.append((label, result_path, result_bytes, state_path, state_bytes))
+
+          actual_state_paths = set(workspace_root.glob("*/agent_workspace/desktop_baseline_state.json"))
+          assert actual_state_paths == expected_state_paths, {
+              "expected": sorted(map(str, expected_state_paths)),
+              "actual": sorted(map(str, actual_state_paths)),
+          }
+
+          negative_candidates = list(
+              (runner_temp / "desktop-no-copyback-results").glob(
+                  f"job_*/task_{task_id}/task_{task_id}.json"
+              )
+          )
+          assert len(negative_candidates) == 1, negative_candidates
+          negative_path = negative_candidates[0]
+          negative_bytes = negative_path.read_bytes()
+          negative = json.loads(negative_bytes)
+          negative_grade = negative.get("grading", {})
+          assert negative.get("task_id") == task_id, negative.get("task_id")
+          assert negative_grade.get("score") == 0.0 and negative_grade.get("max_score") == 1.0, negative_grade
+          assert negative_grade.get("breakdown", {}).get("desktop_baseline_valid") == 0.0, negative_grade
+          negative_workspace = checked_workspace(negative.get("workspace"), "negative-control")
+          negative_state = negative_workspace / "desktop_baseline_state.json"
+          assert not negative_state.exists() and not negative_state.is_symlink(), (
+              "negative control unexpectedly copied grader state to host",
+              negative_state,
+          )
+
+          evidence_dir.mkdir(parents=True)
+          for label, result_path, result_bytes, state_path, state_bytes in validated_states:
+              state_name = f"{label}.json"
+              (evidence_dir / state_name).write_bytes(state_bytes)
+              manifest["positive_runs"].append({
+                  "label": label,
+                  "result_path": str(result_path.relative_to(runner_temp)),
+                  "result_sha256": hashlib.sha256(result_bytes).hexdigest(),
+                  "state_file": state_name,
+                  "state_sha256": hashlib.sha256(state_bytes).hexdigest(),
+              })
+
+          manifest["negative_control"] = {
+              "result_path": str(negative_path.relative_to(runner_temp)),
+              "result_sha256": hashlib.sha256(negative_bytes).hexdigest(),
+              "score": 0.0,
+              "state_file_copied_to_host": False,
+          }
+          (evidence_dir / "manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print("preserved four grader-only desktop state files and hashes; negative-control state remains absent from host workspace")
+          PY
+
       - name: Upload deterministic desktop lifecycle evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -392,5 +509,6 @@ jobs:
             ${{ runner.temp }}/desktop-openclaw-stub-first/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-openclaw-stub-repeat/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-no-copyback-results/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
+            ${{ runner.temp }}/desktop-state-evidence/**
           if-no-files-found: warn
           retention-days: 7

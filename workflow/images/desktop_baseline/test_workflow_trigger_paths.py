@@ -38,6 +38,19 @@ def main() -> None:
         missing = sorted(required - configured)
         assert not missing, f"{relative_path}: missing trigger paths: {missing}"
         print(f"{relative_path}: required source paths covered")
+    lifecycle_path = ROOT / ".github" / "workflows" / "desktop-reference-lifecycle.yml"
+    lifecycle_source = lifecycle_path.read_text(encoding="utf-8")
+    verify_step = "      - name: Verify and package grader-only desktop state evidence"
+    upload_step = "      - name: Upload deterministic desktop lifecycle evidence"
+    assert verify_step in lifecycle_source, "missing grader-only state evidence validation step"
+    assert upload_step in lifecycle_source, "missing deterministic result artifact upload step"
+    assert lifecycle_source.index(verify_step) < lifecycle_source.index(upload_step), (
+        "state evidence must be validated and staged before artifact upload"
+    )
+    assert "${{ runner.temp }}/desktop-state-evidence/**" in lifecycle_source, (
+        "grader-only state evidence must be retained with the task result JSONs"
+    )
+    print("desktop grader-only state evidence retention is configured")
     print("desktop CI trigger dependency checks passed")
 
 

@@ -101,6 +101,9 @@ def main() -> None:
             mismatched_tool_id = _history(index, screenshot_image=True)
             mismatched_tool_id[4]["tool_call_id"] = "unmatched-call-id"
 
+            wrong_read_tool = _history(index, screenshot_image=True)
+            wrong_read_tool[3]["tool_calls"][0]["function"]["name"] = "exec"
+
             duplicate_tool_result = _history(index, screenshot_image=True)
             duplicate_tool_result.append(dict(duplicate_tool_result[4]))
 
@@ -110,6 +113,7 @@ def main() -> None:
                 unrelated_user_image,
                 unrelated_tool_image,
                 mismatched_tool_id,
+                wrong_read_tool,
                 duplicate_tool_result,
             ):
                 try:

@@ -380,3 +380,17 @@ jobs:
           assert '"desktopctl", "type"' in source
           print("reference controller GUI-boundary assertions passed")
           PY
+
+- name: Upload deterministic desktop lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-reference-evidence-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/desktop-reference-results/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
+            ${{ runner.temp }}/desktop-reference-results-repeat/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
+            ${{ runner.temp }}/desktop-openclaw-stub-first/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
+            ${{ runner.temp }}/desktop-openclaw-stub-repeat/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
+            ${{ runner.temp }}/desktop-no-copyback-results/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
+          if-no-files-found: warn
+          retention-days: 7

@@ -85,6 +85,43 @@ class DesktopRuntimePreflightTests(unittest.TestCase):
 
         self.assertEqual(events, ["setup", "preflight"])
 
+    def test_swallowed_run_command_failure_is_caught_by_gui_preflight(self) -> None:
+        # The current AgentCanary run_command setup contract deliberately
+        # swallows non-zero exits. Confirm this task-specific GUI gate catches
+        # the resulting missing display before the benchmark can invoke an agent.
+        events: list[list[str]] = []
+        task = SimpleNamespace(
+            task_id=runner.DESKTOP_TASK_ID,
+            frontmatter={
+                "pre_setup": [{"type": "run_command", "command": "false"}],
+            },
+        )
+
+        def run_cmd(args, **kwargs):
+            events.append(list(args))
+            if len(events) == 1:
+                self.assertEqual(args, ["sh", "-c", "false"])
+                return subprocess.CompletedProcess(
+                    args, 1, "", "simulated setup failure"
+                )
+
+            self.assertEqual(args[:2], ["sh", "-c"])
+            self.assertIn("xdpyinfo -display :99", args[2])
+            return subprocess.CompletedProcess(
+                args, 1, "", "unable to open display"
+            )
+
+        with patch.object(
+            runner.docker, "is_active", return_value=True
+        ), patch.object(runner.docker, "run_cmd", side_effect=run_cmd):
+            with self.assertRaisesRegex(RuntimeError, "GUI preflight failed"):
+                runner._run_deferred_pre_setup_commands_with_desktop_preflight(
+                    task, self.workspace
+                )
+
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0], ["sh", "-c", "false"])
+
     def test_preflight_requires_active_container(self) -> None:
         events: list[str] = []
 

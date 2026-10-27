@@ -26,11 +26,47 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import benchmark  # noqa: E402
+import lib_agent  # noqa: E402
 import lib_docker as docker  # noqa: E402
 
 _original_stop = docker.stop
 _original_execute_openclaw_task = benchmark.execute_openclaw_task
+_original_run_deferred_pre_setup_commands = lib_agent._run_deferred_pre_setup_commands
+DESKTOP_TASK_ID = "task_9000_desktop_notes_gui"
 _task_workspace_for_copyback: Path | None = None
+
+
+def _run_deferred_pre_setup_commands_with_desktop_preflight(task, workspace) -> None:
+    """Fail fast if best-effort task setup did not create the desktop GUI.
+
+    AgentCanary treats generic run_command pre-setup failures as best-effort.
+    For this GUI feasibility task, that could make a missing display/window
+    look like an agent failure and waste a live model request. Verify only the
+    X11 boundary, not the grader-only application state.
+    """
+    _original_run_deferred_pre_setup_commands(task, workspace)
+    if getattr(task, "task_id", None) != DESKTOP_TASK_ID:
+        return
+    if not docker.is_active():
+        raise RuntimeError("desktop baseline preflight requires an active Docker container")
+
+    command = (
+        "set -eu; "
+        "xdpyinfo -display :99 >/dev/null; "
+        "xdotool search --onlyvisible --name '^AgentCanary Desktop Baseline$' >/dev/null"
+    )
+    try:
+        probe = docker.run_cmd(["sh", "-c", command], cwd=str(workspace), timeout=10)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("desktop baseline GUI preflight timed out after 10 seconds") from exc
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout or "").strip()
+        suffix = f": {detail}" if detail else ""
+        raise RuntimeError(
+            "desktop baseline GUI preflight failed after pre_setup; expected "
+            "X11 display :99 and a visible Notes window" + suffix
+        )
+    print("Desktop runtime preflight passed: X11 display and visible Notes window are ready", flush=True)
 
 
 def _capture_task_workspace(*args, **kwargs):
@@ -56,6 +92,7 @@ def _capture_task_workspace(*args, **kwargs):
 # Capture the runner-selected path before task execution; do not discover a
 # potentially agent-created lookalike directory after the run.
 benchmark.execute_openclaw_task = _capture_task_workspace
+lib_agent._run_deferred_pre_setup_commands = _run_deferred_pre_setup_commands_with_desktop_preflight
 
 
 STATE_ARTIFACT_IN_CONTAINER = "/tmp/agentcanary-desktop/desktop_baseline_state.json"

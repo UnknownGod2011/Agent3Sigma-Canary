@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -113,38 +114,80 @@ class WorkspaceCopybackCleanupTests(unittest.TestCase):
             self.assertFalse((workspace / ".desktop_baseline_state.json.copyback").exists())
 
 
-    def test_multiple_workspace_candidates_fail_closed_before_copyback(self) -> None:
+    def test_capture_task_workspace_before_execution(self) -> None:
+        workspace = Path("/tmp/scry/" + "a" * 32 + "/agent_workspace")
+
+        def fake_execute(**kwargs):
+            # The path must be captured before the original execution lifecycle
+            # can call docker.stop and trigger copyback.
+            self.assertEqual(runner._task_workspace_for_copyback, workspace)
+            self.assertEqual(kwargs["task_agent_workspace_root_relate"], workspace)
+            return {"status": "captured"}
+
+        with (
+            patch.object(runner, "_task_workspace_for_copyback", None),
+            patch.object(runner, "_original_execute_openclaw_task", side_effect=fake_execute),
+        ):
+            result = runner._capture_task_workspace(
+                task_agent_workspace_root_relate=workspace
+            )
+
+        self.assertEqual(result, {"status": "captured"})
+
+    def test_copyback_uses_exact_runner_workspace_without_discovery(self) -> None:
+        workspace = Path("/tmp/scry/" + "a" * 32 + "/agent_workspace")
         events: list[list[str]] = []
 
         def fake_run(args, **kwargs):
             events.append(args)
-            self.assertEqual(args[:3], ["docker", "exec", "container-id"])
-            self.assertIn("find", args)
-            return SimpleNamespace(
-                returncode=0,
-                stdout=(
-                    "/tmp/scry/task-1/agent_workspace"
-                    + chr(10)
-                    + "/tmp/scry/agent-created/agent_workspace"
-                    + chr(10)
-                ),
-                stderr="",
-            )
+            self.assertEqual(args[:2], ["docker", "cp"])
+            self.assertEqual(args[2], f"container-id:{workspace}/.")
+            self.assertEqual(args[3], str(workspace))
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-        with (
-            patch.object(runner.docker, "get_container_id", return_value="container-id"),
-            patch.object(runner.subprocess, "run", side_effect=fake_run),
-        ):
-            with self.assertRaisesRegex(
-                RuntimeError,
-                "expected exactly one Docker task agent_workspace before grading, found 2",
+        try:
+            with (
+                patch.object(runner, "_task_workspace_for_copyback", workspace),
+                patch.object(runner.docker, "get_container_id", return_value="container-id"),
+                patch.object(runner.subprocess, "run", side_effect=fake_run),
+                patch.object(runner, "_copy_grader_state_artifact_to_host", return_value=False),
             ):
                 runner._copy_task_workspaces_to_host()
 
-        # Fail closed before any docker cp can move agent-controlled workspace
-        # contents into the host's grading area.
-        self.assertEqual(len(events), 1)
-        self.assertNotIn("cp", events[0])
+            self.assertEqual(len(events), 1)
+            self.assertNotIn("find", events[0])
+        finally:
+            shutil.rmtree(workspace.parent, ignore_errors=True)
+
+    def test_missing_captured_workspace_fails_closed_before_copyback(self) -> None:
+        with (
+            patch.object(runner, "_task_workspace_for_copyback", None),
+            patch.object(runner.docker, "get_container_id", return_value="container-id"),
+            patch.object(runner.subprocess, "run") as run,
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "AgentCanary task workspace was not captured before grading",
+            ):
+                runner._copy_task_workspaces_to_host()
+
+        run.assert_not_called()
+
+    def test_unexpected_workspace_path_fails_closed_before_copyback(self) -> None:
+        fake_workspace = Path("/tmp/scry/agent-created/agent_workspace")
+        with (
+            patch.object(runner, "_task_workspace_for_copyback", fake_workspace),
+            patch.object(runner.docker, "get_container_id", return_value="container-id"),
+            patch.object(runner.subprocess, "run") as run,
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "refusing unexpected workspace path",
+            ):
+                runner._copy_task_workspaces_to_host()
+
+        run.assert_not_called()
+
 
 
 if __name__ == "__main__":

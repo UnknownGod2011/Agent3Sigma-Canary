@@ -1,0 +1,314 @@
+name: Desktop compatibility against upstream PR #1
+
+on:
+  push:
+    branches:
+      - research/desktop-ui-baseline
+    paths:
+      - ".github/workflows/desktop-pr1-compatibility.yml"
+      - "workflow/images/desktop_baseline/**"
+      - "tasks/desktop_baseline/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-pr1-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout fork branch without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Stage the desktop fixture overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/desktop-overlay/workflow/images" "$RUNNER_TEMP/desktop-overlay/tasks"
+          cp -a workflow/images/desktop_baseline "$RUNNER_TEMP/desktop-overlay/workflow/images/"
+          cp -a tasks/desktop_baseline "$RUNNER_TEMP/desktop-overlay/tasks/"
+
+      - name: Fetch the current upstream PR #1 head in an isolated checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init "$RUNNER_TEMP/upstream-pr1"
+          git -C "$RUNNER_TEMP/upstream-pr1" remote add origin https://github.com/antgroup/Agent3Sigma-Canary.git
+          git -C "$RUNNER_TEMP/upstream-pr1" fetch --depth=1 origin refs/pull/1/head
+          git -C "$RUNNER_TEMP/upstream-pr1" checkout --detach FETCH_HEAD
+          pr_sha="$(git -C "$RUNNER_TEMP/upstream-pr1" rev-parse HEAD)"
+          echo "UPSTREAM_PR1_SHA=$pr_sha" >> "$GITHUB_ENV"
+          echo "Testing upstream PR #1 head: $pr_sha"
+
+      - name: Overlay the desktop task and helpers
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-pr1
+        run: |
+          set -euo pipefail
+          cp -a "$RUNNER_TEMP/desktop-overlay/workflow/images/desktop_baseline" workflow/images/
+          cp -a "$RUNNER_TEMP/desktop-overlay/tasks/desktop_baseline" tasks/
+          # The image builder needs generated config, but this test must not need secrets.
+          printf '{"models":{"mode":"merge","providers":{}},"tools":{"profile":"full"}}\n' > workflow/openclaw.json
+
+      - name: Install uv for the upstream runner
+        run: python -m pip install --disable-pip-version-check uv
+
+      - name: Run desktop adapter regression tests against the PR runner
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-pr1
+        run: |
+          set -euo pipefail
+          uv run python workflow/images/desktop_baseline/test_evidence_parser.py
+          python workflow/images/desktop_baseline/test_model_attempt_classifier.py
+          uv run python workflow/images/desktop_baseline/test_desktop_model_stub.py
+          uv run python workflow/images/desktop_baseline/test_desktop_runtime_preflight.py
+          uv run python workflow/images/desktop_baseline/test_run_benchmark_preflight.py
+          uv run python workflow/images/desktop_baseline/test_results_dir_isolation.py
+          uv run python workflow/images/desktop_baseline/test_workspace_copyback_cleanup.py
+
+      - name: Prepare the upstream builder context and build a desktop-compatible image
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-pr1
+        run: |
+          set -euo pipefail
+          workspace="$RUNNER_TEMP/agentcanary-pr1-builder"
+          rm -rf "$workspace"
+          python workflow/build_images.py \
+            --images official \
+            --prepare-only \
+            --non-interactive \
+            --workspace "$workspace"
+          context="$workspace/build_official"
+          mkdir -p "$context/desktop"
+          cp workflow/images/desktop_baseline/desktop/notes_app.py "$context/desktop/"
+          cp workflow/images/desktop_baseline/desktop/desktopctl "$context/desktop/"
+          cp workflow/images/desktop_baseline/desktop_model_stub.py "$context/desktop/"
+          cp workflow/images/desktop_baseline/desktop_baseline_entrypoint.sh "$context/desktop/"
+          cp workflow/images/desktop_baseline/smoke_test.sh "$context/desktop/"
+          cat >> "$context/Dockerfile" <<'DOCKER'
+
+          # Desktop/UI feasibility overlay: retain the PR builder's OpenClaw version,
+          # mock API, configuration, and image labels; add only the real GUI surface.
+          USER root
+          RUN apt-get update && apt-get install -y \
+              python3-tk \
+              xvfb \
+              xdotool \
+              x11-utils \
+              scrot \
+              && rm -rf /var/lib/apt/lists/*
+          RUN mkdir -p /opt/agentcanary-desktop /tmp/agentcanary-desktop
+          COPY desktop/notes_app.py /opt/agentcanary-desktop/notes_app.py
+          COPY desktop/desktop_model_stub.py /opt/agentcanary-desktop/desktop_model_stub.py
+          COPY desktop/desktopctl /usr/local/bin/desktopctl
+          COPY desktop/desktop_baseline_entrypoint.sh /usr/local/bin/desktop-baseline-entrypoint.sh
+          COPY desktop/smoke_test.sh /usr/local/bin/desktop-baseline-smoke-test
+          RUN chmod +x /usr/local/bin/desktopctl /usr/local/bin/desktop-baseline-entrypoint.sh /usr/local/bin/desktop-baseline-smoke-test
+          ENV DISPLAY=:99
+          ENV DESKTOP_BASELINE_STATE=/tmp/agentcanary-desktop/desktop_baseline_state.json
+          ENTRYPOINT ["/usr/local/bin/desktop-baseline-entrypoint.sh"]
+          DOCKER
+          echo "Builder OpenClaw pin: $(grep -E 'LABEL ai.agentcanary.openclaw_version=' "$context/Dockerfile" | tail -n 1)"
+          docker build -t agentcanary-desktop-pr1-base "$context"
+
+      - name: Create the reference-controller image
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-pr1
+        run: |
+          set -euo pipefail
+          container="agentcanary-desktop-pr1-reference-build"
+          cleanup() { docker rm -f "$container" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker create --name "$container" agentcanary-desktop-pr1-base >/dev/null
+          docker cp workflow/images/desktop_baseline/reference_openclaw.py "$container:/usr/local/bin/agentcanary-reference-openclaw"
+          docker start "$container" >/dev/null
+          docker exec "$container" chmod 0755 /usr/local/bin/agentcanary-reference-openclaw
+          docker exec "$container" ln -sf /usr/local/bin/agentcanary-reference-openclaw /usr/local/bin/openclaw
+          docker stop "$container" >/dev/null
+          docker commit "$container" agentcanary-desktop-pr1-reference >/dev/null
+
+      - name: Run the deterministic reference lifecycle twice on the PR runner
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-pr1
+        run: |
+          set -euo pipefail
+          for attempt in first repeat; do
+            results_dir="$RUNNER_TEMP/pr1-reference-$attempt"
+            rm -rf "$results_dir"
+            DOCKER_IMAGE=agentcanary-desktop-pr1-reference uv run python \
+              workflow/images/desktop_baseline/run_reference_benchmark.py \
+              --model reference/desktop \
+              --suite task_9000_desktop_notes_gui \
+              --docker \
+              --timeout-multiplier 1.0 \
+              --output-dir "$results_dir" \
+              --verbose
+            uv run python workflow/images/desktop_baseline/verify_benchmark.py "$results_dir"
+          done
+          echo "Reference lifecycle repeated on upstream PR head $UPSTREAM_PR1_SHA"
+
+      - name: Confirm host grading depends on artifact copyback
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-pr1
+        run: |
+          set -euo pipefail
+          results_dir="$RUNNER_TEMP/pr1-negative-control"
+          rm -rf "$results_dir"
+          DOCKER_IMAGE=agentcanary-desktop-pr1-reference uv run python \
+            workflow/images/desktop_baseline/run_reference_benchmark.py \
+            --no-workspace-copyback \
+            --assert-container-state-before-stop \
+            --model reference/desktop \
+            --suite task_9000_desktop_notes_gui \
+            --docker \
+            --timeout-multiplier 1.0 \
+            --output-dir "$results_dir" \
+            --verbose
+          python - "$results_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          task_id = "task_9000_desktop_notes_gui"
+          artifacts = list(root.glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+          assert artifacts, f"no negative-control artifact found under {root}"
+          data = json.loads(max(artifacts, key=lambda p: p.stat().st_mtime_ns).read_text(encoding="utf-8"))
+          grading = data.get("grading", {})
+          assert data.get("task_id") == task_id, data.get("task_id")
+          assert grading.get("max_score") == 1.0 and grading.get("score") == 0.0, grading
+          assert grading.get("breakdown", {}).get("desktop_baseline_valid") == 0.0, grading
+          print("negative control confirmed: GUI state exists in-container, but host grading fails without copyback")
+          PY
+
+      - name: Build the credential-free local OpenClaw provider image
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-pr1
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/desktop-openclaw-stub.json"
+          cat > "$config" <<'JSON'
+          {
+            "models": {
+              "mode": "merge",
+              "providers": {
+                "desktop-stub": {
+                  "baseUrl": "http://127.0.0.1:8765/v1",
+                  "apiKey": "agentcanary-local-stub-key",
+                  "api": "openai-completions",
+                  "models": [{
+                    "id": "desktop-fixture",
+                    "name": "AgentCanary desktop integration fixture",
+                    "reasoning": false,
+                    "input": ["text", "image"],
+                    "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                    "contextWindow": 32768,
+                    "maxTokens": 2048
+                  }]
+                }
+              }
+            },
+            "agents": {
+              "defaults": {
+                "model": {"primary": "desktop-stub/desktop-fixture"},
+                "models": {"desktop-stub/desktop-fixture": {"alias": "desktop.stub.desktop.fixture"}}
+              }
+            },
+            "tools": {"profile": "full"}
+          }
+          JSON
+          marker="$RUNNER_TEMP/enable-model-stub"
+          : > "$marker"
+          container="agentcanary-desktop-pr1-stub-build"
+          cleanup() { docker rm -f "$container" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker create --name "$container" agentcanary-desktop-pr1-base >/dev/null
+          docker cp "$config" "$container:/root/.openclaw/openclaw.json"
+          docker cp "$marker" "$container:/opt/agentcanary-desktop/enable-model-stub"
+          docker start "$container" >/dev/null
+          ready=false
+          for _ in $(seq 1 40); do
+            if docker exec "$container" curl -fsS http://127.0.0.1:8765/health >/dev/null; then
+              ready=true
+              break
+            fi
+            sleep 0.25
+          done
+          if [[ "$ready" != true ]]; then
+            docker logs "$container" || true
+            docker exec "$container" cat /tmp/agentcanary-desktop-model-stub.log || true
+            exit 1
+          fi
+          docker stop "$container" >/dev/null
+          docker commit "$container" agentcanary-desktop-pr1-openclaw-stub >/dev/null
+
+      - name: Run the real OpenClaw tool loop against the local provider twice
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-pr1
+        run: |
+          set -euo pipefail
+          for attempt in first repeat; do
+            results_dir="$RUNNER_TEMP/pr1-openclaw-stub-$attempt"
+            rm -rf "$results_dir"
+            DOCKER_IMAGE=agentcanary-desktop-pr1-openclaw-stub uv run python \
+              workflow/images/desktop_baseline/run_reference_benchmark.py \
+              --model desktop-stub/desktop-fixture \
+              --suite task_9000_desktop_notes_gui \
+              --docker \
+              --timeout-multiplier 1.0 \
+              --output-dir "$results_dir" \
+              --verbose
+            uv run python workflow/images/desktop_baseline/verify_benchmark.py "$results_dir"
+            python - "$results_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          task_id = "task_9000_desktop_notes_gui"
+          artifacts = list(root.glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+          assert artifacts, f"no local-provider artifact found under {root}"
+          data = json.loads(max(artifacts, key=lambda p: p.stat().st_mtime_ns).read_text(encoding="utf-8"))
+          assert data.get("task_id") == task_id, data.get("task_id")
+          assert data.get("grading", {}).get("score") == 1.0, data.get("grading")
+          calls, call_ids, image_reads = [], [], []
+          for event in data.get("transcript", []):
+              if not isinstance(event, dict) or event.get("type") != "message":
+                  continue
+              message = event.get("message", {})
+              if not isinstance(message, dict) or message.get("role") != "assistant":
+                  continue
+              for item in message.get("content", []):
+                  if not isinstance(item, dict) or item.get("type") != "toolCall":
+                      continue
+                  call_ids.append(str(item.get("id", "")))
+                  calls.append(item.get("name"))
+                  args = item.get("arguments", {})
+                  if isinstance(args, dict) and item.get("name") == "read":
+                      path = args.get("path")
+                      if isinstance(path, str) and path.endswith(".png"):
+                          image_reads.append(path)
+          assert calls.count("exec") >= 5, calls
+          assert "read" in calls and image_reads, (calls, image_reads)
+          assert call_ids and not any(value.startswith("desktop-reference-") for value in call_ids), call_ids
+          print("local-provider trajectory verified: screenshot read, GUI tool calls, and independent 1.0 score")
+          PY
+          done
+          echo "Local-provider tool loop repeated on upstream PR head $UPSTREAM_PR1_SHA; no external model provider was called."
+
+      - name: Preserve compatibility run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-pr1-compatibility-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/pr1-reference-first/**
+            ${{ runner.temp }}/pr1-reference-repeat/**
+            ${{ runner.temp }}/pr1-negative-control/**
+            ${{ runner.temp }}/pr1-openclaw-stub-first/**
+            ${{ runner.temp }}/pr1-openclaw-stub-repeat/**
+          if-no-files-found: warn
+          retention-days: 7

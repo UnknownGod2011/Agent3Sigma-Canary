@@ -279,6 +279,10 @@ def _parser() -> argparse.ArgumentParser:
     agent.add_argument("--agent", required=True)
     agent.add_argument("--session-id", default="")
     agent.add_argument("--message", required=True)
+    # The upstream runner passes this flag to the native OpenClaw CLI. The
+    # deterministic reference controller is already local, so accept it as a
+    # compatibility flag without changing the GUI action path.
+    agent.add_argument("--local", action="store_true", help=argparse.SUPPRESS)
     agent.set_defaults(func=cmd_agent)
     return parser
 

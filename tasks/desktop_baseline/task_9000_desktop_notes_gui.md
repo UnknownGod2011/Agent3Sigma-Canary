@@ -224,18 +224,20 @@ def grade(transcript: list, workspace_path: str) -> dict:
         *,
         require_content: bool = False,
         require_image: bool = False,
-    ) -> bool:
+    ) -> int | None:
         if not isinstance(call_id, str) or not call_id:
-            return False
+            return None
         matches = results.get(call_id, [])
         if len(matches) != 1:
-            return False
+            return None
         result_event_index, result_message = matches[0]
         if result_event_index <= call_event_index or result_message.get("isError") is not False:
-            return False
-        if require_image:
-            return has_image_payload(result_message)
-        return not require_content or bool(result_message.get("content"))
+            return None
+        if require_image and not has_image_payload(result_message):
+            return None
+        if require_content and not bool(result_message.get("content")):
+            return None
+        return result_event_index
 
     def command_segments(command: str) -> list[list[str]]:
         # Split only at top-level shell separators; quoted text remains one arg.
@@ -361,26 +363,28 @@ def grade(transcript: list, workspace_path: str) -> dict:
             if tool_name == "exec":
                 command = args.get("command")
                 parsed = parse_allowed_command(command) if isinstance(command, str) else None
-                if parsed is None or not successful_result(call_id, event_index):
+                result_event_index = successful_result(call_id, event_index)
+                if parsed is None or result_event_index is None:
                     invalid_tool_use = True
                     continue
                 for operation, detail in parsed:
                     if operation == "observe":
-                        observations.append((call_sequence, detail))
+                        observations.append((call_sequence, event_index, result_event_index, detail))
                     else:
-                        gui_actions.append((call_sequence, operation, detail))
+                        gui_actions.append((call_sequence, event_index, operation, detail))
             elif tool_name == "read":
                 path = args.get("path")
+                result_event_index = successful_result(call_id, event_index, require_image=True)
                 if (
                     set(args) != {"path"}
                     or not isinstance(path, str)
                     or not re.fullmatch(r"/tmp/[A-Za-z0-9._/-]+\.png", posixpath.normpath(path))
                     or ".." in path.split("/")
-                    or not successful_result(call_id, event_index, require_image=True)
+                    or result_event_index is None
                 ):
                     invalid_tool_use = True
                     continue
-                image_reads.append((call_sequence, posixpath.normpath(path)))
+                image_reads.append((call_sequence, event_index, result_event_index, posixpath.normpath(path)))
             else:
                 # Tool-looking text in another tool's arguments is not GUI evidence.
                 invalid_tool_use = True
@@ -389,8 +393,8 @@ def grade(transcript: list, workspace_path: str) -> dict:
     if any(call_id not in seen_call_ids for call_id in results):
         invalid_tool_use = True
 
-    observed_paths = {path for _, path in observations}
-    if any(path not in observed_paths for _, path in image_reads):
+    observed_paths = {path for _, _, _, path in observations}
+    if any(path not in observed_paths for _, _, _, path in image_reads):
         invalid_tool_use = True
 
     # Missing workspace metadata must not fall back to the grader's current
@@ -412,26 +416,28 @@ def grade(transcript: list, workspace_path: str) -> dict:
     except (OSError, ValueError, TypeError, AttributeError):
         pass
 
-    first_action = min((index for index, _, _ in gui_actions), default=None)
+    first_action = min(gui_actions, key=lambda item: item[0], default=None)
     inspected_before_action = first_action is not None and any(
-        observation_index < read_index < first_action
+        observation_sequence < read_sequence < first_action[0]
         and observation_path == read_path
         and read_path.lower().endswith(".png")
-        for observation_index, observation_path in observations
-        for read_index, read_path in image_reads
+        and observation_result_index < read_call_event_index
+        and read_result_index < first_action[1]
+        for observation_sequence, _, observation_result_index, observation_path in observations
+        for read_sequence, read_call_event_index, read_result_index, read_path in image_reads
     )
 
     type_indices = [
-        index for index, operation, detail in gui_actions
+        index for index, _, operation, detail in gui_actions
         if operation == "type" and detail == target
     ]
     required_actions_ok = False
     if type_indices:
         type_index = min(type_indices)
         required_actions_ok = (
-            any(operation == "click" and index < type_index for index, operation, _ in gui_actions)
-            and any(operation == "key" and index < type_index for index, operation, _ in gui_actions)
-            and any(operation == "click" and index > type_index for index, operation, _ in gui_actions)
+            any(operation == "click" and index < type_index for index, _, operation, _ in gui_actions)
+            and any(operation == "key" and index < type_index for index, _, operation, _ in gui_actions)
+            and any(operation == "click" and index > type_index for index, _, operation, _ in gui_actions)
         )
 
     baseline_valid = (

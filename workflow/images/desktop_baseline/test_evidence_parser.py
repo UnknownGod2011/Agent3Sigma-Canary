@@ -119,6 +119,59 @@ def transcript(
     return events
 
 
+def batch_first_observation_read_action(trace: list[dict]) -> list[dict]:
+    """Batch observe, screenshot-read, and first action calls before their results."""
+    call_items = []
+    call_ids = []
+    for event in trace:
+        message = event.get("message", {}) if isinstance(event, dict) else {}
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        content = message.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "toolCall":
+                call_items.append(item)
+                call_ids.append(item.get("id"))
+                if len(call_items) == 3:
+                    break
+        if len(call_items) == 3:
+            break
+    assert len(call_items) == 3, "fixture must have observe, read, and action calls"
+    selected_ids = set(call_ids)
+    batched_call_event = {
+        "type": "message",
+        "message": {"role": "assistant", "content": call_items},
+    }
+    selected_results = [
+        event for event in trace
+        if isinstance(event, dict)
+        and isinstance(event.get("message"), dict)
+        and event["message"].get("role") == "toolResult"
+        and event["message"].get("toolCallId") in selected_ids
+    ]
+    remaining = []
+    for event in trace:
+        message = event.get("message", {}) if isinstance(event, dict) else {}
+        if not isinstance(message, dict):
+            remaining.append(event)
+            continue
+        if message.get("role") == "toolResult" and message.get("toolCallId") in selected_ids:
+            continue
+        if message.get("role") == "assistant":
+            content = message.get("content", [])
+            if isinstance(content, list) and any(
+                isinstance(item, dict)
+                and item.get("type") == "toolCall"
+                and item.get("id") in selected_ids
+                for item in content
+            ):
+                continue
+        remaining.append(event)
+    return [batched_call_event, *selected_results, *remaining]
+
+
 def replace_image_payload(trace: list[dict], payload: str, mime_type: str | None = None) -> None:
     found = False
     for event in trace:
@@ -210,6 +263,13 @@ def main() -> None:
 
         valid_trace = transcript(commands)
         assert grade(task, workspace, valid_trace) == 1.0
+
+        # A tool-call batch cannot prove the screenshot was returned and read
+        # before the first GUI action was issued.
+        batched_trace = batch_first_observation_read_action(valid_trace)
+        assert grade(task, workspace, batched_trace) == 0.0
+        batched_evidence = _evidence(batched_trace)
+        assert not _inspected_before_action(*batched_evidence[:3])
 
         # A correct earlier save is insufficient if the visible editor is
         # subsequently changed without another Save callback.

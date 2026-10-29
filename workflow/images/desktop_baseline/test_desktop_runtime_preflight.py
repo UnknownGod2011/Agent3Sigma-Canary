@@ -19,7 +19,10 @@ from workflow.images.desktop_baseline import run_reference_benchmark as runner  
 class DesktopRuntimePreflightTests(unittest.TestCase):
     def setUp(self) -> None:
         self.workspace = Path("/tmp/scry/" + "a" * 32 + "/agent_workspace")
-        self.task = SimpleNamespace(task_id=runner.DESKTOP_TASK_ID)
+        self.task = SimpleNamespace(
+            task_id=runner.DESKTOP_TASK_ID,
+            file_path=Path("tasks/desktop_baseline/task_9000_desktop_notes_gui.md"),
+        )
 
     def _setup_patch(self, events: list[str]):
         def setup(task, workspace):
@@ -92,6 +95,7 @@ class DesktopRuntimePreflightTests(unittest.TestCase):
         events: list[list[str]] = []
         task = SimpleNamespace(
             task_id=runner.DESKTOP_TASK_ID,
+            file_path=Path("tasks/desktop_baseline/task_9000_desktop_notes_gui.md"),
             frontmatter={
                 "pre_setup": [{"type": "run_command", "command": "false"}],
             },

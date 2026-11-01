@@ -30,7 +30,7 @@ update `current_text`, allowing the grader to reject a later unsaved edit.
 The credential-free reference controller uses Tesseract OCR on the initial
 screenshot to locate the visible `baseline note` text, then uses a second
 screenshot to locate the `Save` button after editing. Both click positions are
-derived from OCR bounding boxes; missing or ambiguous text fails closed.
+derived from OCR bounding boxes; missing or ambiguous text fails closed. The fixture start command also waits for the initial Tk paint to settle before the first observation.
 
 A local Xvfb probe completed the task at two different window origins. The
 derived editor and Save-button coordinates moved with the window, while the

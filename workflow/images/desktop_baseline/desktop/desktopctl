@@ -68,6 +68,8 @@ case "${1:-}" in
     for _ in $(seq 1 50); do
       if wid="$(window_id)" && [[ -n "${wid}" ]]; then
         xdotool windowfocus --sync "${wid}"
+        # The top-level window maps before all Tk child widgets finish painting.
+        sleep 0.5
         exit 0
       fi
       sleep 0.1

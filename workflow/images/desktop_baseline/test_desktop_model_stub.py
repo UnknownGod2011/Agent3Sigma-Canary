@@ -194,7 +194,7 @@ def main() -> None:
     assert stream_chunks(final)[-1]["choices"][0]["finish_reason"] == "stop"
 
     serialized_plan = json.dumps(TOOL_STEPS)
-    for forbidden in ("desktop_baseline_state.json", "notes_app.py", "/opt/agentcanary-desktop"):
+    for forbidden in ("desktop_baseline_state.json", "notes_ui.py", "/opt/agentcanary-desktop"):
         assert forbidden not in serialized_plan, f"stub plan contains forbidden bypass marker: {forbidden}"
     print("desktop model stub tests passed: valid screenshot payload, malformed-image rejection, ordered GUI tools, and streaming responses")
 

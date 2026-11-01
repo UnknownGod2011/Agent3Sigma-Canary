@@ -32,7 +32,7 @@ TASK_PATH = REPO_ROOT / "tasks" / "desktop_baseline" / f"{TASK_ID}.md"
 DEFAULT_SCREENSHOT = "/tmp/agentcanary-desktop/screen.png"
 FORBIDDEN = (
     "desktop_baseline_state.json",
-    "notes_app.py",
+    "notes_ui.py",
     "/opt/agentcanary-desktop",
 )
 

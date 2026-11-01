@@ -53,7 +53,7 @@ def grade(transcript: list, workspace_path: str) -> dict:
     allowed_keys = {"Home", "End", "BackSpace", "Delete", "shift+End", "ctrl+a", "Control_L+a"}
     forbidden_markers = (
         "desktop_baseline_state.json",
-        "notes_app.py",
+        "notes_ui.py",
         "/opt/agentcanary-desktop",
     )
 

@@ -342,7 +342,7 @@ jobs:
           assert any("desktopctl click" in command for command in commands), commands
           assert any("desktopctl type" in command for command in commands), commands
           assert any("desktopctl key" in command for command in commands), commands
-          forbidden = ("desktop_baseline_state.json", "notes_app.py", "/opt/agentcanary-desktop")
+          forbidden = ("desktop_baseline_state.json", "notes_ui.py", "/opt/agentcanary-desktop")
           assert not any(marker in command for command in commands for marker in forbidden), commands
 
           print(
@@ -363,7 +363,7 @@ jobs:
           ).read_text(encoding="utf-8")
           forbidden_runtime_reads = (
               "desktop_baseline_state.json",
-              "notes_app.py",
+              "notes_ui.py",
           )
           for marker in forbidden_runtime_reads:
               assert marker not in source, marker

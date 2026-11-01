@@ -3,7 +3,7 @@ set -euo pipefail
 
 export DISPLAY="${DISPLAY:-:99}"
 RUNTIME_DIR="${DESKTOP_BASELINE_RUNTIME:-/tmp/agentcanary-desktop}"
-APP="/opt/agentcanary-desktop/notes_app.py"
+APP="/opt/agentcanary-desktop/notes_ui.py"
 WINDOW_NAME="AgentCanary Desktop Baseline"
 mkdir -p "${RUNTIME_DIR}"
 

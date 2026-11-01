@@ -84,7 +84,7 @@ jobs:
             --workspace "$workspace"
           context="$workspace/build_official"
           mkdir -p "$context/desktop"
-          cp workflow/images/desktop_baseline/desktop/notes_app.py "$context/desktop/"
+          cp workflow/images/desktop_baseline/desktop/notes_ui.py "$context/desktop/"
           cp workflow/images/desktop_baseline/desktop/desktop_ocr.py "$context/desktop/"
           cp workflow/images/desktop_baseline/desktop/desktopctl "$context/desktop/"
           cp workflow/images/desktop_baseline/desktop_model_stub.py "$context/desktop/"
@@ -104,7 +104,7 @@ jobs:
               tesseract-ocr \
               && rm -rf /var/lib/apt/lists/*
           RUN mkdir -p /opt/agentcanary-desktop /tmp/agentcanary-desktop
-          COPY desktop/notes_app.py /opt/agentcanary-desktop/notes_app.py
+          COPY desktop/notes_ui.py /opt/agentcanary-desktop/notes_ui.py
           COPY desktop/desktop_ocr.py /opt/agentcanary-desktop/desktop_ocr.py
           COPY desktop/desktop_model_stub.py /opt/agentcanary-desktop/desktop_model_stub.py
           COPY desktop/desktopctl /usr/local/bin/desktopctl

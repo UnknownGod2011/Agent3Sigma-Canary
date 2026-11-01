@@ -64,6 +64,7 @@ jobs:
           uv run python workflow/images/desktop_baseline/test_evidence_parser.py
           python workflow/images/desktop_baseline/test_model_attempt_classifier.py
           uv run python workflow/images/desktop_baseline/test_desktop_model_stub.py
+          python workflow/images/desktop_baseline/test_desktop_ocr.py
           uv run python workflow/images/desktop_baseline/test_desktop_runtime_preflight.py
           uv run python workflow/images/desktop_baseline/test_run_benchmark_preflight.py
           uv run python workflow/images/desktop_baseline/test_results_dir_isolation.py
@@ -84,6 +85,7 @@ jobs:
           context="$workspace/build_official"
           mkdir -p "$context/desktop"
           cp workflow/images/desktop_baseline/desktop/notes_app.py "$context/desktop/"
+          cp workflow/images/desktop_baseline/desktop/desktop_ocr.py "$context/desktop/"
           cp workflow/images/desktop_baseline/desktop/desktopctl "$context/desktop/"
           cp workflow/images/desktop_baseline/desktop_model_stub.py "$context/desktop/"
           cp workflow/images/desktop_baseline/desktop_baseline_entrypoint.sh "$context/desktop/"
@@ -99,14 +101,16 @@ jobs:
               xdotool \
               x11-utils \
               scrot \
+              tesseract-ocr \
               && rm -rf /var/lib/apt/lists/*
           RUN mkdir -p /opt/agentcanary-desktop /tmp/agentcanary-desktop
           COPY desktop/notes_app.py /opt/agentcanary-desktop/notes_app.py
+          COPY desktop/desktop_ocr.py /opt/agentcanary-desktop/desktop_ocr.py
           COPY desktop/desktop_model_stub.py /opt/agentcanary-desktop/desktop_model_stub.py
           COPY desktop/desktopctl /usr/local/bin/desktopctl
           COPY desktop/desktop_baseline_entrypoint.sh /usr/local/bin/desktop-baseline-entrypoint.sh
           COPY desktop/smoke_test.sh /usr/local/bin/desktop-baseline-smoke-test
-          RUN chmod +x /usr/local/bin/desktopctl /usr/local/bin/desktop-baseline-entrypoint.sh /usr/local/bin/desktop-baseline-smoke-test
+          RUN chmod +x /opt/agentcanary-desktop/desktop_ocr.py /usr/local/bin/desktopctl /usr/local/bin/desktop-baseline-entrypoint.sh /usr/local/bin/desktop-baseline-smoke-test
           ENV DISPLAY=:99
           ENV DESKTOP_BASELINE_STATE=/tmp/agentcanary-desktop/desktop_baseline_state.json
           ENTRYPOINT ["/usr/local/bin/desktop-baseline-entrypoint.sh"]

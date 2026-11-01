@@ -6,8 +6,11 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 IMAGE = os.environ.get("DESKTOP_BASELINE_IMAGE", "agentcanary-desktop-baseline")
+DIAGNOSTICS_ROOT = Path(os.environ.get("RUNNER_TEMP", tempfile.gettempdir())) / "desktop-layout-diagnostics"
 PROBE = r'''
 import json
 import subprocess
@@ -72,6 +75,60 @@ def docker(*args: str, timeout: int = 45, check: bool = True) -> subprocess.Comp
     return result
 
 
+def _capture_diagnostics(container: str, label: str) -> None:
+    """Preserve the failing container's screenshot and X11/Tk evidence before cleanup."""
+    destination = DIAGNOSTICS_ROOT / label
+    destination.mkdir(parents=True, exist_ok=True)
+    probes = {
+        "container-logs.txt": ["logs", container],
+        "processes.txt": ["exec", container, "ps", "-ef"],
+        "window-tree.txt": ["exec", container, "xwininfo", "-root", "-tree"],
+        "display.txt": ["exec", container, "xdpyinfo", "-display", ":99"],
+        "app.log": ["exec", container, "cat", "/tmp/agentcanary-desktop/app.log"],
+        "xvfb.log": ["exec", container, "cat", "/tmp/agentcanary-desktop/xvfb.log"],
+        "before-ocr.tsv": [
+            "exec", container, "tesseract",
+            "/tmp/agentcanary-desktop/layout_probe_before.png",
+            "stdout", "--psm", "11", "tsv",
+        ],
+        "after-ocr.tsv": [
+            "exec", container, "tesseract",
+            "/tmp/agentcanary-desktop/layout_probe_after.png",
+            "stdout", "--psm", "11", "tsv",
+        ],
+    }
+    for filename, args in probes.items():
+        try:
+            result = docker(*args, timeout=15, check=False)
+            body = result.stdout or ""
+            if result.stderr:
+                body += "\n[stderr]\n" + result.stderr
+            if result.returncode:
+                body += f"\n[exit_code={result.returncode}]\n"
+            (destination / filename).write_text(body, encoding="utf-8")
+        except Exception as exc:
+            (destination / filename).write_text(
+                f"diagnostic command failed: {type(exc).__name__}: {exc}\n",
+                encoding="utf-8",
+            )
+
+    for filename in ("layout_probe_before.png", "layout_probe_after.png"):
+        source = f"{container}:/tmp/agentcanary-desktop/{filename}"
+        try:
+            result = docker("cp", source, str(destination / filename), timeout=20, check=False)
+            if result.returncode:
+                (destination / f"{filename}.missing.txt").write_text(
+                    (result.stderr or result.stdout or "docker cp failed").strip() + "\n",
+                    encoding="utf-8",
+                )
+        except Exception as exc:
+            (destination / f"{filename}.missing.txt").write_text(
+                f"diagnostic copy failed: {type(exc).__name__}: {exc}\n",
+                encoding="utf-8",
+            )
+    print(f"Preserved desktop layout diagnostics under {destination}", file=sys.stderr)
+
+
 def run_case(label: str, origin: tuple[int, int]) -> dict:
     name = f"agentcanary-desktop-layout-{os.getpid()}-{label}"
     docker("run", "-d", "--name", name, IMAGE, timeout=60)
@@ -89,6 +146,9 @@ def run_case(label: str, origin: tuple[int, int]) -> dict:
             docker("exec", name, "sleep", "0.5")
         result = docker("exec", name, "python3", "-c", PROBE, timeout=45)
         return json.loads(result.stdout)
+    except Exception:
+        _capture_diagnostics(name, label)
+        raise
     finally:
         docker("rm", "-f", name, timeout=30, check=False)
 

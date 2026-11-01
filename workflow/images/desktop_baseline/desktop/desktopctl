@@ -54,7 +54,7 @@ focus_fixture() {
   local detail
   if ! detail="$(xdotool windowfocus --sync "${wid}" 2>&1)"; then
     echo "desktopctl: failed to focus fixture window id=${wid}" >&2
-    [[ -z "${detail}" ]] || printf '%s\\n' "${detail}" >&2
+    [[ -z "${detail}" ]] || printf '%s\n' "${detail}" >&2
     xdotool getwindowfocus 2>&1 >&2 || true
     return 1
   fi

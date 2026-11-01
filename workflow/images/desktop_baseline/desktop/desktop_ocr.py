@@ -5,7 +5,6 @@ from __future__ import annotations
 import csv
 import io
 import subprocess
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,7 +24,7 @@ def _normalize_token(value: str) -> str:
     return value.strip(".,:;!?").casefold()
 
 
-def parse_tesseract_tsv(tsv: str, *, min_confidence: float = 50.0) -> list[OCRWord]:
+def parse_tesseract_tsv(tsv: str, *, min_confidence: float = 35.0) -> list[OCRWord]:
     """Parse word-level TSV rows, discarding empty, malformed, and weak tokens."""
     words: list[OCRWord] = []
     reader = csv.DictReader(io.StringIO(tsv), delimiter="\t")
@@ -61,38 +60,63 @@ def parse_tesseract_tsv(tsv: str, *, min_confidence: float = 50.0) -> list[OCRWo
 def find_text_box(
     words: list[OCRWord], phrase: str, *, screen_width: int = 800, screen_height: int = 600
 ) -> tuple[int, int]:
-    """Return the center of one unique phrase match on one OCR line.
+    """Return the center of one unique, visually aligned phrase match.
 
-    Ambiguous or absent phrases fail closed rather than selecting an arbitrary
-    coordinate. Coordinates are checked against the fixture's virtual display.
+    Tesseract can split adjacent words into different block/line identifiers.
+    Match by page and bounding-box alignment instead of trusting those layout
+    labels. Ambiguous or absent text fails closed.
     """
     target = tuple(_normalize_token(token) for token in phrase.split() if token)
     if not target:
         raise ValueError("phrase must contain at least one token")
 
-    by_line: dict[tuple[int, int, int, int], list[OCRWord]] = defaultdict(list)
-    for word in words:
-        by_line[word.line_key].append(word)
-
+    ordered = sorted(
+        words,
+        key=lambda word: (word.line_key[0], word.top + word.height / 2, word.left),
+    )
     matches: list[tuple[int, int]] = []
-    for line_words in by_line.values():
-        for index in range(len(line_words) - len(target) + 1):
-            sequence = line_words[index:index + len(target)]
-            if tuple(_normalize_token(word.text) for word in sequence) != target:
-                continue
-            left = min(word.left for word in sequence)
-            top = min(word.top for word in sequence)
-            right = max(word.left + word.width for word in sequence)
-            bottom = max(word.top + word.height for word in sequence)
-            x = (left + right) // 2
-            y = (top + bottom) // 2
-            if not (0 <= x < screen_width and 0 <= y < screen_height):
-                continue
+    for index in range(len(ordered) - len(target) + 1):
+        sequence = ordered[index:index + len(target)]
+        if tuple(_normalize_token(word.text) for word in sequence) != target:
+            continue
+        if len({word.line_key[0] for word in sequence}) != 1:
+            continue
+
+        top = max(word.top for word in sequence)
+        bottom = min(word.top + word.height for word in sequence)
+        min_height = min(word.height for word in sequence)
+        if bottom - top < 0.4 * min_height:
+            continue
+        gaps = [
+            right.left - (left.left + left.width)
+            for left, right in zip(sequence, sequence[1:])
+        ]
+        if any(
+            gap > 3 * max(left.height, right.height)
+            for gap, left, right in zip(gaps, sequence, sequence[1:])
+        ):
+            continue
+        if any(right.left < left.left for left, right in zip(sequence, sequence[1:])):
+            continue
+
+        left = min(word.left for word in sequence)
+        top = min(word.top for word in sequence)
+        right = max(word.left + word.width for word in sequence)
+        bottom = max(word.top + word.height for word in sequence)
+        x = (left + right) // 2
+        y = (top + bottom) // 2
+        if 0 <= x < screen_width and 0 <= y < screen_height:
             matches.append((x, y))
 
     if len(matches) != 1:
+        visible = [
+            f"{word.text!r}@{word.left},{word.top},{word.width},{word.height}"
+            f"/{word.confidence:.0f}"
+            for word in ordered[:40]
+        ]
         raise LookupError(
-            f"expected exactly one OCR match for {phrase!r}, found {len(matches)}"
+            f"expected exactly one OCR match for {phrase!r}, found {len(matches)}; "
+            f"recognized words: {visible}"
         )
     return matches[0]
 
@@ -101,15 +125,15 @@ def locate_text(
     image_path: str | Path,
     phrase: str,
     *,
-    min_confidence: float = 50.0,
+    min_confidence: float = 35.0,
     timeout_seconds: int = 10,
 ) -> tuple[int, int]:
-    """Run Tesseract on a captured desktop screenshot and locate one phrase."""
+    """Run Tesseract's sparse-text mode on a captured desktop screenshot."""
     path = Path(image_path)
     if not path.is_file():
         raise FileNotFoundError(f"desktop screenshot does not exist: {path}")
     result = subprocess.run(
-        ["tesseract", str(path), "stdout", "--psm", "6", "tsv"],
+        ["tesseract", str(path), "stdout", "--psm", "11", "tsv"],
         capture_output=True,
         text=True,
         check=False,

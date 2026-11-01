@@ -25,10 +25,22 @@ class DesktopOCRTests(unittest.TestCase):
         self.assertEqual(desktop_ocr.find_text_box(words, "baseline note"), (122, 162))
         self.assertEqual(desktop_ocr.find_text_box(words, "Save"), (359, 368))
 
-    def test_does_not_join_words_across_lines(self) -> None:
+    def test_matches_visually_aligned_tokens_across_tesseract_blocks(self) -> None:
         words = desktop_ocr.parse_tesseract_tsv(TSV)
+        split = [
+            words[0],
+            desktop_ocr.OCRWord("note", 96.6, 141, 157, 35, 11, (1, 9, 4, 7)),
+        ]
+        self.assertEqual(desktop_ocr.find_text_box(split, "baseline note"), (122, 162))
+
+    def test_does_not_join_words_across_visual_rows(self) -> None:
+        words = desktop_ocr.parse_tesseract_tsv(TSV)
+        split = [
+            words[0],
+            desktop_ocr.OCRWord("note", 96.6, 141, 200, 35, 11, (1, 1, 1, 1)),
+        ]
         with self.assertRaises(LookupError):
-            desktop_ocr.find_text_box(words, "note Save")
+            desktop_ocr.find_text_box(split, "baseline note")
 
     def test_ambiguous_phrase_fails_closed(self) -> None:
         duplicate = TSV.replace(
@@ -45,7 +57,7 @@ class DesktopOCRTests(unittest.TestCase):
         with self.assertRaises(LookupError):
             desktop_ocr.find_text_box(words, "baseline note")
 
-    def test_tesseract_invocation_uses_fixed_page_segmentation(self) -> None:
+    def test_tesseract_invocation_uses_sparse_text_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "screenshot.png"
             path.write_bytes(b"fixture")
@@ -57,7 +69,7 @@ class DesktopOCRTests(unittest.TestCase):
                 self.assertEqual(desktop_ocr.locate_text(path, "baseline note"), (122, 162))
                 self.assertEqual(
                     run.call_args.args[0],
-                    ["tesseract", str(path), "stdout", "--psm", "6", "tsv"],
+                    ["tesseract", str(path), "stdout", "--psm", "11", "tsv"],
                 )
 
 

@@ -70,6 +70,8 @@ jobs:
       - name: Build desktop baseline image
         run: docker build -t agentcanary-desktop-baseline "$BUILD_DIR"
 
+      - name: Verify OCR-derived GUI actions follow a moved window
+        run: python workflow/images/desktop_baseline/test_desktop_layout_variation.py
 
       - name: Build credential-free OpenClaw local-model integration image
         run: |

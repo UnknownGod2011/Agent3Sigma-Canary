@@ -351,12 +351,14 @@ jobs:
               "workflow/images/desktop_baseline/reference_openclaw.py"
           ).read_text(encoding="utf-8")
           forbidden_runtime_reads = (
-              "read_text(encoding=\"utf-8\")  # desktop_baseline_state",
+              "desktop_baseline_state.json",
               "notes_app.py",
-              "/opt/agentcanary-desktop",
           )
           for marker in forbidden_runtime_reads:
               assert marker not in source, marker
+          assert "from desktop_ocr import locate_text" in source
+          assert 'locate_text(initial_screenshot, "baseline note")' in source
+          assert 'locate_text(save_screenshot, "Save")' in source
 
           wrapper = Path(
               "workflow/images/desktop_baseline/run_reference_benchmark.py"

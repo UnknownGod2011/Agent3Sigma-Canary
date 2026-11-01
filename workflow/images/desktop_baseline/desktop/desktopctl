@@ -93,12 +93,12 @@ case "${1:-}" in
   click)
     [[ $# -eq 3 ]] || usage
     focus_fixture
-    local detail
+    detail=""
     if ! detail="$(xdotool mousemove --sync "$2" "$3" click 1 2>&1)"; then
       echo "desktopctl: failed to click GUI coordinates ($2,$3)" >&2
-      [[ -z "${detail}" ]] || printf '%s\\n' "${detail}" >&2
+      [[ -z "${detail}" ]] || printf '%s\n' "${detail}" >&2
       xdotool getmouselocation --shell 2>&1 >&2 || true
-      return 1
+      exit 1
     fi
     # X11 input delivery is asynchronous relative to the Tk event loop. Give
     # the application time to process the click before the caller proceeds.

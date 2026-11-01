@@ -39,6 +39,9 @@ jobs:
       - name: Run model-attempt classification regression tests
         run: python workflow/images/desktop_baseline/test_model_attempt_classifier.py
 
+      - name: Run screenshot OCR localization regression tests
+        run: python workflow/images/desktop_baseline/test_desktop_ocr.py
+
       - name: Run deterministic OpenClaw model-stub regression tests
         run: python workflow/images/desktop_baseline/test_desktop_model_stub.py
 

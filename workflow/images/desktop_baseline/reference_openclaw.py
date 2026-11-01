@@ -23,10 +23,14 @@ import time
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, "/opt/agentcanary-desktop")
+from desktop_ocr import locate_text
+
 OPENCLAW_HOME = Path("/root/.openclaw")
 AGENTS_DIR = OPENCLAW_HOME / "agents"
 STATE_PATH = OPENCLAW_HOME / "desktop_reference_agents.json"
 SCREENSHOT_PATH = Path("/tmp/agentcanary-desktop-reference.png")
+SAVE_SCREENSHOT_PATH = Path("/tmp/agentcanary-desktop-reference-save.png")
 TARGET_TEXT = "AgentCanary desktop baseline complete"
 
 
@@ -197,39 +201,45 @@ def cmd_agent(args: argparse.Namespace) -> int:
         _message("user", [{"type": "text", "text": args.message}])
     ]
 
-    # 1. Observe the real X11 desktop through the same helper available to a
-    #    normal evaluated agent.
-    observe_cmd = f"desktopctl observe {SCREENSHOT_PATH}"
-    _record_tool(
-        events,
-        "exec",
-        {"command": observe_cmd},
-        lambda: _run_gui("desktopctl", "observe", str(SCREENSHOT_PATH)),
-    )
+    def observe_and_read(path: Path) -> Path:
+        # Remove a prior run's image so scrot cannot silently choose a suffixed path.
+        path.unlink(missing_ok=True)
+        observe_cmd = f"desktopctl observe {path}"
+        observed_path = _record_tool(
+            events,
+            "exec",
+            {"command": observe_cmd},
+            lambda: _run_gui("desktopctl", "observe", str(path)),
+        )
+        if observed_path != str(path):
+            raise RuntimeError(f"desktop observation returned unexpected path: {observed_path!r}")
 
-    # 2. Consume the screenshot bytes before any GUI action. The result is
-    #    correlated with the read call and explicitly marked successful.
-    def consume_screenshot() -> str:
-        width, height, size = _inspect_png(SCREENSHOT_PATH)
-        return f"PNG screenshot consumed: {width}x{height}, {size} bytes"
+        def consume_screenshot() -> str:
+            width, height, size = _inspect_png(path)
+            return f"PNG screenshot consumed: {width}x{height}, {size} bytes"
 
-    _record_tool(
-        events,
-        "read",
-        {"path": str(SCREENSHOT_PATH)},
-        consume_screenshot,
-        image_path=SCREENSHOT_PATH,
-    )
+        _record_tool(
+            events,
+            "read",
+            {"path": str(path)},
+            consume_screenshot,
+            image_path=path,
+        )
+        return path
 
-    # 3. Drive only the public GUI surface.  These coordinates are stable by
-    #    construction of the deterministic 800x600 fixture; this controller is
-    #    an integration oracle, not a claim of autonomous visual reasoning.
+    # 1. Observe the real X11 desktop and derive the editor click point from
+    #    the visible initial note. OCR must find one unambiguous phrase.
+    initial_screenshot = observe_and_read(SCREENSHOT_PATH)
+    editor_x, editor_y = locate_text(initial_screenshot, "baseline note")
+
+    # 2. Drive the public X11 GUI surface. These coordinates come from the
+    #    current screenshot rather than fixed fixture geometry. This remains a
+    #    deterministic OCR reference controller, not an autonomous model.
     actions = [
-        ("desktopctl click 320 180", ("desktopctl", "click", "320", "180")),
+        (f"desktopctl click {editor_x} {editor_y}", ("desktopctl", "click", str(editor_x), str(editor_y))),
         ("desktopctl key Home", ("desktopctl", "key", "Home")),
         ("desktopctl key shift+End", ("desktopctl", "key", "shift+End")),
         (f"desktopctl type {TARGET_TEXT}", ("desktopctl", "type", TARGET_TEXT)),
-        ("desktopctl click 320 330", ("desktopctl", "click", "320", "330")),
     ]
     for command, argv in actions:
         _record_tool(
@@ -238,6 +248,18 @@ def cmd_agent(args: argparse.Namespace) -> int:
             {"command": command},
             lambda argv=argv: _run_gui(*argv),
         )
+
+    # 3. Re-observe after editing and locate the visible Save button from the
+    #    new screenshot before clicking it.
+    save_screenshot = observe_and_read(SAVE_SCREENSHOT_PATH)
+    save_x, save_y = locate_text(save_screenshot, "Save")
+    save_command = f"desktopctl click {save_x} {save_y}"
+    _record_tool(
+        events,
+        "exec",
+        {"command": save_command},
+        lambda: _run_gui("desktopctl", "click", str(save_x), str(save_y)),
+    )
 
     # The validated smoke test allows the Tk event loop up to three seconds to
     # persist the Save callback. Match that timing budget here without reading

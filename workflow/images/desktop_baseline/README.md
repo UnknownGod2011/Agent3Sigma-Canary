@@ -25,6 +25,18 @@ starts with a different value and writes `saved: false`; only the GUI Save
 button changes the saved text and sets `saved: true`. Keyboard events also
 update `current_text`, allowing the grader to reject a later unsaved edit.
 
+## Screenshot-grounded reference controller
+
+The credential-free reference controller uses Tesseract OCR on the initial
+screenshot to locate the visible \`baseline note\` text, then uses a second
+screenshot to locate the \`Save\` button after editing. Both click positions are
+derived from OCR bounding boxes; missing or ambiguous text fails closed.
+
+A local Xvfb probe completed the task at two different window origins. The
+derived editor and Save-button coordinates moved with the window, while the
+saved and current text remained exact. This is deterministic OCR-based
+reference behavior, not autonomous visual reasoning or model-quality evidence.
+
 ## Deterministic OpenClaw tool-loop integration
 
 CI also runs the task through the unmodified OpenClaw CLI against a credential-free,

@@ -73,6 +73,15 @@ jobs:
       - name: Verify OCR-derived GUI actions follow a moved window
         run: python workflow/images/desktop_baseline/test_desktop_layout_variation.py
 
+      - name: Upload desktop layout diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-layout-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}/desktop-layout-diagnostics/**
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Build credential-free OpenClaw local-model integration image
         run: |
           set -euo pipefail

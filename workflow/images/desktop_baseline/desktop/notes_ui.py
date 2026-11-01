@@ -38,6 +38,9 @@ instruction.pack(pady=(0, 12))
 editor = tk.Text(root, width=66, height=8, font=("Sans", 12), name="editor")
 editor.pack(padx=24)
 editor.insert("1.0", INITIAL_TEXT)
+# Keep the insertion caret off the initial text so screenshot OCR can locate it
+# deterministically even when the caret blink phase changes between captures.
+editor.mark_set("insert", "2.0")
 
 status = tk.StringVar(value="Not saved")
 

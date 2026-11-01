@@ -382,9 +382,12 @@ jobs:
           assert "benchmark.main()" in wrapper
           assert "grade_task" not in wrapper
 
-          assert "_inspect_png(SCREENSHOT_PATH)" in source
+          assert "_inspect_png(path)" in source
+          assert "observe_and_read(SCREENSHOT_PATH)" in source
+          assert "observe_and_read(SAVE_SCREENSHOT_PATH)" in source
           assert '"desktopctl", "observe"' in source
           assert '"desktopctl", "click"' in source
+          assert '"desktopctl", "key"' in source
           assert '"desktopctl", "type"' in source
           print("reference controller GUI-boundary assertions passed")
           PY

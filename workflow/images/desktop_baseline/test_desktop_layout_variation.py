@@ -20,9 +20,15 @@ from desktop_ocr import locate_text
 
 
 def run(*args):
-    return subprocess.run(
-        list(args), capture_output=True, text=True, check=True, timeout=20
-    ).stdout.strip()
+    result = subprocess.run(
+        list(args), capture_output=True, text=True, check=False, timeout=20
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(
+            f"desktop command {args!r} exited {result.returncode}: {detail}"
+        )
+    return result.stdout.strip()
 
 
 state_path = Path("/tmp/agentcanary-desktop/layout_probe_state.json")

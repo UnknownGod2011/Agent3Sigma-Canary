@@ -176,7 +176,11 @@ def read_state_artifact(container_id:str)->bytes|None:
     return data
 
 def write_state_artifact(workspace:str|Path,data:bytes|None,filename:str)->bool:
-    if not re.fullmatch(r"[A-Za-z0-9._-]+",filename): raise ValueError("unsafe artifact filename")
+    if (
+        not isinstance(filename, str)
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,254}", filename)
+    ):
+        raise ValueError("unsafe artifact filename")
     root=Path(workspace); root.mkdir(parents=True,exist_ok=True)
     target=root/filename; temporary=root/f".{filename}.copyback"
     _remove(target); _remove(temporary)

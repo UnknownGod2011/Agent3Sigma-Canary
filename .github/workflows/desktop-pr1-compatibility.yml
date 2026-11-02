@@ -23,6 +23,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Record Docker client and server versions
+        run: docker version
+
       - name: Stage the desktop fixture overlay
         shell: bash
         run: |
@@ -68,6 +71,7 @@ jobs:
           uv run python workflow/images/desktop_baseline/test_desktop_runtime_preflight.py
           uv run python workflow/images/desktop_baseline/test_run_benchmark_preflight.py
           uv run python workflow/images/desktop_baseline/test_results_dir_isolation.py
+          uv run python workflow/images/desktop_baseline/test_safe_container_export.py
           uv run python workflow/images/desktop_baseline/test_workspace_copyback_cleanup.py
 
       - name: Prepare the upstream builder context and build a desktop-compatible image
@@ -163,7 +167,7 @@ jobs:
           rm -rf "$results_dir"
           DOCKER_IMAGE=agentcanary-desktop-pr1-reference uv run python \
             workflow/images/desktop_baseline/run_reference_benchmark.py \
-            --no-workspace-copyback \
+            --no-artifact-copyback \
             --assert-container-state-before-stop \
             --model reference/desktop \
             --suite task_9000_desktop_notes_gui \

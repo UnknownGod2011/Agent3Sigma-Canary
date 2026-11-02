@@ -27,6 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Record Docker client and server versions
+        run: docker version
+
       - name: Verify desktop CI watches image source dependencies
         run: python workflow/images/desktop_baseline/test_workflow_trigger_paths.py
 
@@ -57,8 +60,10 @@ jobs:
       - name: Verify desktop runtime preflight fails closed
         run: uv run python workflow/images/desktop_baseline/test_desktop_runtime_preflight.py
 
-      - name: Verify container teardown if workspace copyback fails
-        run: uv run python workflow/images/desktop_baseline/test_workspace_copyback_cleanup.py
+      - name: Verify bounded container artifact export and teardown
+        run: |
+          python workflow/images/desktop_baseline/test_safe_container_export.py
+          uv run python workflow/images/desktop_baseline/test_workspace_copyback_cleanup.py
 
       - name: Prepare desktop baseline image context
         run: |
@@ -285,7 +290,7 @@ jobs:
           rm -rf "$results_dir"
 
           uv run python workflow/images/desktop_baseline/run_reference_benchmark.py \
-            --no-workspace-copyback \
+            --no-artifact-copyback \
             --assert-container-state-before-stop \
             --model reference/desktop \
             --suite task_9000_desktop_notes_gui \

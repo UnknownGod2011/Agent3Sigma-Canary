@@ -12,7 +12,8 @@ The image preserves the official OpenClaw + mock-api runner contract and adds:
 - a deterministic Tk notes application
 - `desktopctl observe` for PNG screenshots
 - `desktopctl click`, `type`, and `key` for mouse/keyboard input
-- a machine-checkable state artifact at `/tmp/agentcanary-desktop/desktop_baseline_state.json`, outside the agent workspace during interaction; the harness copies it into the host-side grading workspace only after execution
+- a machine-checkable state artifact at `/tmp/agentcanary-desktop/desktop_baseline_state.json`, outside the agent workspace during interaction; after execution, the adapter reads this fixed regular file with `docker exec` and writes it into the host-side grading workspace
+- bounded transcript export of regular `sessions/*.jsonl` files through `docker exec`; the experimental adapter does not use container-to-host `docker cp` or tar extraction
 
 ## Scope and isolation limitation
 
@@ -82,7 +83,8 @@ cat /tmp/agentcanary-desktop/desktop_baseline_state.json
 ```
 
 The final `cat` is for maintainer-side inspection only; it must not be part of
-the evaluated agent trajectory.
+the evaluated agent trajectory. Host-side artifact collection uses bounded
+`docker exec` reads and never extracts an agent-controlled container archive.
 
 A valid baseline run must show all of the following:
 

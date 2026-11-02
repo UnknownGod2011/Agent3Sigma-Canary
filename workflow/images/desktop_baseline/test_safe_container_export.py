@@ -108,6 +108,29 @@ class HostExportTests(unittest.TestCase):
             self.assertFalse(target.exists())
             self.assertFalse((Path(tmp)/".state.json.copyback").exists())
 
+    def test_state_writer_rejects_unsafe_filenames_without_mutating_workspace(self):
+        invalid_names = (
+            "",
+            ".",
+            "..",
+            "../escape.json",
+            "nested/state.json",
+            r"..\\escape.json",
+            "a" * 256,
+            None,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "workspace"
+            root.mkdir()
+            marker = root / "keep.txt"
+            marker.write_text("keep", encoding="utf-8")
+            for filename in invalid_names:
+                with self.subTest(filename=filename):
+                    with self.assertRaisesRegex(ValueError, "unsafe artifact filename"):
+                        export.write_state_artifact(root, b'{"saved":true}', filename)
+                    self.assertTrue(root.is_dir())
+                    self.assertEqual(marker.read_text(encoding="utf-8"), "keep")
+
     def test_empty_container_id_is_noop_for_transcripts(self):
         self.assertEqual(export.export_transcripts("","agent-1","/tmp/run","/tmp/scry/.docker-transcripts"),"")
 

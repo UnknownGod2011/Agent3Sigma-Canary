@@ -386,15 +386,24 @@ jobs:
           # command scalar are escaped in the source file. Normalize only that
           # frontmatter before asserting the pre_setup contract.
           task_frontmatter = task.split("---", 2)[1].replace('\\\"', '"')
-          assert "_copy_task_workspaces_to_host" in wrapper
+          exporter = Path(
+              "workflow/images/desktop_baseline/safe_container_export.py"
+          ).read_text(encoding="utf-8")
+          assert "_copy_task_artifacts_to_host" in wrapper
           assert "_copy_grader_state_artifact_to_host" in wrapper
           assert 'STATE_ARTIFACT_IN_CONTAINER = "/tmp/agentcanary-desktop/desktop_baseline_state.json"' in wrapper
-          assert "state artifact leaked into agent workspace" in wrapper
+          assert "state artifact leaked in agent workspace" in wrapper or "state artifact leaked into agent workspace" in wrapper
+          assert "import safe_container_export as safe_export" in wrapper
+          assert "safe_export.export_transcripts(" in wrapper
+          assert "safe_export.read_state_artifact(" in wrapper
+          assert "safe_export.write_state_artifact(" in wrapper
+          assert '["docker", "exec"' in wrapper
+          assert '["docker", "cp"' not in wrapper
+          assert '["docker","exec"' in exporter
+          assert '["docker","cp"' not in exporter
           assert 'desktopctl start "$AGENTCANARY_TASK_WORKSPACE/desktop_baseline_state.json"' not in task_frontmatter
           assert 'rm -f "$AGENTCANARY_TASK_WORKSPACE/desktop_baseline_state.json"' in task_frontmatter
           assert "/tmp/agentcanary-desktop/desktop_baseline_state.json" in task_frontmatter
-          assert '"docker",' in wrapper
-          assert '"cp",' in wrapper
           assert "benchmark.main()" in wrapper
           assert "grade_task" not in wrapper
 

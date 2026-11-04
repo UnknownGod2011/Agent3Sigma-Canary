@@ -64,6 +64,25 @@ def main() -> None:
         assert field in lifecycle_source, f"evidence manifest missing provenance field: {field}"
     print("desktop evidence manifest records source, run, and task-definition provenance")
     print("desktop grader-only state evidence retention is configured")
+
+    native_bind_mount_step = (
+        "      - name: Verify task-scoped bind-mount handoff with native OpenClaw CLI (repeat twice)"
+    )
+    assert native_bind_mount_step in lifecycle_source, (
+        "missing native OpenClaw bind-mount lifecycle experiment"
+    )
+    step_start = lifecycle_source.index(native_bind_mount_step)
+    step_end = lifecycle_source.find("\\n      - name:", step_start + len(native_bind_mount_step))
+    native_step = lifecycle_source[step_start:step_end if step_end >= 0 else None]
+    for required in (
+        "DOCKER_IMAGE: agentcanary-desktop-openclaw-stub",
+        "run_bind_mount_benchmark.py",
+        "--model desktop-stub/desktop-fixture",
+        "desktop-bind-mount-openclaw-stub-$attempt",
+        'value.startswith("desktop-reference-")',
+    ):
+        assert required in native_step, f"native OpenClaw bind-mount experiment missing: {required}"
+    print("native OpenClaw bind-mount experiment is part of the desktop lifecycle gate")
     print("desktop CI trigger dependency checks passed")
 
 

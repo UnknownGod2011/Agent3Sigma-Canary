@@ -199,6 +199,68 @@ jobs:
           done
           echo "two post-teardown bind-mount handoffs reproduced the independently graded GUI state"
 
+      - name: Verify task-scoped bind-mount handoff with native OpenClaw CLI (repeat twice)
+        env:
+          DOCKER_IMAGE: agentcanary-desktop-openclaw-stub
+        run: |
+          set -euo pipefail
+          for attempt in first repeat; do
+            results_dir="$RUNNER_TEMP/desktop-bind-mount-openclaw-stub-$attempt"
+            rm -rf "$results_dir"
+
+            uv run python workflow/images/desktop_baseline/run_bind_mount_benchmark.py \\
+              --model desktop-stub/desktop-fixture \\
+              --suite task_9000_desktop_notes_gui \\
+              --docker \\
+              --timeout-multiplier 1.0 \\
+              --output-dir "$results_dir" \\
+              --verbose
+
+            uv run python workflow/images/desktop_baseline/verify_benchmark.py "$results_dir"
+
+            python - "$results_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          task_id = "task_9000_desktop_notes_gui"
+          candidates = list(root.glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+          assert len(candidates) == 1, candidates
+          artifact = candidates[0]
+          data = json.loads(artifact.read_text(encoding="utf-8"))
+          grading = data.get("grading", {})
+          assert data.get("task_id") == task_id, data.get("task_id")
+          assert grading.get("score") == 1.0 and grading.get("max_score") == 1.0, grading
+
+          names = []
+          call_ids = []
+          image_reads = []
+          for event in data.get("transcript", []):
+              if not isinstance(event, dict) or event.get("type") != "message":
+                  continue
+              message = event.get("message", {})
+              if not isinstance(message, dict) or message.get("role") != "assistant":
+                  continue
+              for item in message.get("content", []):
+                  if not isinstance(item, dict) or item.get("type") != "toolCall":
+                      continue
+                  names.append(item.get("name"))
+                  call_ids.append(str(item.get("id", "")))
+                  arguments = item.get("arguments", {})
+                  if isinstance(arguments, dict) and item.get("name") == "read":
+                      path = arguments.get("path")
+                      if isinstance(path, str) and path.endswith(".png"):
+                          image_reads.append(path)
+
+          assert names.count("exec") >= 5, names
+          assert "read" in names and image_reads, (names, image_reads)
+          assert call_ids and not any(value.startswith("desktop-reference-") for value in call_ids), call_ids
+          print(f"native OpenClaw bind-mount result verified: {artifact}")
+          PY
+          done
+          echo "two native OpenClaw tool-loop runs reproduced the expected GUI state through the task-scoped bind mount"
+
       - name: Prove the no-mount negative control fails host-side grading
         env:
           DOCKER_IMAGE: agentcanary-desktop-reference
@@ -530,6 +592,8 @@ jobs:
               "openclaw-stub-repeat": "desktop-openclaw-stub-repeat",
               "bind-mount-first": "desktop-bind-mount-first",
               "bind-mount-repeat": "desktop-bind-mount-repeat",
+              "bind-mount-openclaw-stub-first": "desktop-bind-mount-openclaw-stub-first",
+              "bind-mount-openclaw-stub-repeat": "desktop-bind-mount-openclaw-stub-repeat",
           }
           evidence_dir = runner_temp / "desktop-state-evidence"
           shutil.rmtree(evidence_dir, ignore_errors=True)
@@ -627,6 +691,7 @@ jobs:
               ("reference-first", "reference-repeat"),
               ("openclaw-stub-first", "openclaw-stub-repeat"),
               ("bind-mount-first", "bind-mount-repeat"),
+              ("bind-mount-openclaw-stub-first", "bind-mount-openclaw-stub-repeat"),
           ):
               assert tool_sequences[first] == tool_sequences[repeat], (
                   "repeated desktop runs produced different ordered tool-call sequences",
@@ -711,7 +776,7 @@ jobs:
               json.dumps(manifest, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",
           )
-          print("preserved four grader-only desktop state files, hashes, and repeatable tool-call sequences; negative-control state remains absent from host workspace")
+          print("preserved grader-only desktop state files, hashes, and repeatable tool-call sequences; negative-control state remains absent from host workspace")
           PY
 
       - name: Upload deterministic desktop lifecycle evidence
@@ -725,6 +790,7 @@ jobs:
             ${{ runner.temp }}/desktop-openclaw-stub-first/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-openclaw-stub-repeat/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-bind-mount-*/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
+            ${{ runner.temp }}/desktop-bind-mount-openclaw-stub-*/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-no-bind-mount-results/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-no-copyback-results/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-state-evidence/**

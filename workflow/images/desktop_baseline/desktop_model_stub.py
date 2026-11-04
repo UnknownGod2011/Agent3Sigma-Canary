@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Credential-free OpenAI-compatible provider stub for desktop integration CI.
 
-This is a deterministic tool-loop fixture, not an autonomous model. It exercises
-the installed OpenClaw CLI and refuses the first GUI action unless a valid
-800x600 PNG screenshot payload appears in the provider request.
+This is a deterministic OCR-grounded tool-loop fixture, not an autonomous model.
+It exercises the installed OpenClaw CLI, decodes the screenshots returned to the
+provider, and derives both GUI click coordinates from their visible text.
 """
 from __future__ import annotations
 
@@ -11,25 +11,37 @@ import base64
 import binascii
 import json
 import struct
+import sys
+import tempfile
 import time
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_OCR_DIR = _SCRIPT_DIR if (_SCRIPT_DIR / "desktop_ocr.py").is_file() else _SCRIPT_DIR / "desktop"
+sys.path.insert(0, str(_OCR_DIR))
+from desktop_ocr import locate_text
 
 HOST = "127.0.0.1"
 PORT = 8765
 MODEL_ID = "desktop-fixture"
 API_KEY = "agentcanary-local-stub-key"
 
-TOOL_STEPS: tuple[tuple[str, dict[str, str]], ...] = (
+TOOL_STEPS: tuple[tuple[str, dict[str, str] | None], ...] = (
     ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/screen.png"}),
     ("read", {"path": "/tmp/agentcanary-desktop/screen.png"}),
-    ("exec", {"command": "desktopctl click 320 180"}),
+    ("exec", None),  # Screenshot-derived editor click.
     ("exec", {"command": "desktopctl key Home"}),
     ("exec", {"command": "desktopctl key shift+End"}),
     ("exec", {"command": "desktopctl type 'AgentCanary desktop baseline complete'"}),
-    ("exec", {"command": "desktopctl click 320 330"}),
+    ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/save.png"}),
+    ("read", {"path": "/tmp/agentcanary-desktop/save.png"}),
+    ("exec", None),  # Screenshot-derived Save-button click.
 )
+
+DYNAMIC_CLICK_STEPS = {2: "baseline note", 8: "Save"}
 
 
 def _valid_png_bytes(image_bytes: bytes) -> bool:
@@ -213,18 +225,86 @@ def _message_text(content: Any) -> str:
     return ""
 
 
-def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
-    """Require the observed screenshot to reach the provider before GUI input.
+def _extract_png_bytes(value: Any) -> bytes | None:
+    """Extract one validated PNG payload from a provider message value."""
+    if isinstance(value, dict):
+        image_url = value.get("image_url")
+        if isinstance(image_url, dict):
+            url = image_url.get("url")
+            if isinstance(url, str):
+                header, separator, payload = url.partition(",")
+                if separator and header.lower() == "data:image/png;base64":
+                    try:
+                        data = base64.b64decode(payload, validate=True)
+                    except (ValueError, binascii.Error):
+                        data = b""
+                    if _valid_png_bytes(data):
+                        return data
 
-    OpenClaw's OpenAI Chat Completions adapter moves image blocks from a
-    toolResult into a following user message labelled
-    "Attached image(s) from tool result:". Also accept the legacy explicit
-    "Image(s) from tool result #1 (read):" label, but only when it follows
-    the matching read result. Require a successful observe and the exact same
-    path for observe and read.
+        url = value.get("url")
+        if isinstance(url, str):
+            header, separator, payload = url.partition(",")
+            if separator and header.lower() == "data:image/png;base64":
+                try:
+                    data = base64.b64decode(payload, validate=True)
+                except (ValueError, binascii.Error):
+                    data = b""
+                if _valid_png_bytes(data):
+                    return data
+
+        data = value.get("data")
+        mime = value.get("mimeType") or value.get("mime_type") or value.get("media_type")
+        if isinstance(mime, str) and mime.lower() == "image/png" and isinstance(data, str):
+            try:
+                image_bytes = base64.b64decode(data, validate=True)
+            except (ValueError, binascii.Error):
+                image_bytes = b""
+            if _valid_png_bytes(image_bytes):
+                return image_bytes
+
+        source = value.get("source")
+        if isinstance(source, dict) and source.get("type") == "base64":
+            if str(source.get("media_type", "")).lower() == "image/png":
+                try:
+                    image_bytes = base64.b64decode(source.get("data", ""), validate=True)
+                except (ValueError, binascii.Error, TypeError):
+                    image_bytes = b""
+                if _valid_png_bytes(image_bytes):
+                    return image_bytes
+
+        for item in value.values():
+            found = _extract_png_bytes(item)
+            if found is not None:
+                return found
+
+    elif isinstance(value, list):
+        for item in value:
+            found = _extract_png_bytes(item)
+            if found is not None:
+                return found
+
+    elif isinstance(value, str):
+        header, separator, payload = value.partition(",")
+        if separator and header.lower() == "data:image/png;base64":
+            try:
+                image_bytes = base64.b64decode(payload, validate=True)
+            except (ValueError, binascii.Error):
+                image_bytes = b""
+            if _valid_png_bytes(image_bytes):
+                return image_bytes
+
+    return None
+
+
+def _latest_screenshot_png(messages: list[dict[str, Any]]) -> bytes | None:
+    """Return the PNG bound to the latest successful observe -> read pair.
+
+    OpenClaw may keep image data on the tool result or move it to the
+    immediately following user message. In either case, the path and tool-call
+    IDs must correlate with the latest desktopctl observation.
     """
     if not isinstance(messages, list):
-        return False
+        return None
 
     calls: list[tuple[int, Any, Any, dict[str, Any]]] = []
     for message_index, message in enumerate(messages):
@@ -238,34 +318,37 @@ def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
                 continue
             function = call.get("function")
             if not isinstance(function, dict):
-                return False
+                return None
             name = function.get("name")
             arguments = function.get("arguments")
             if isinstance(arguments, str):
                 try:
                     arguments = json.loads(arguments)
                 except (json.JSONDecodeError, TypeError):
-                    return False
+                    return None
             if not isinstance(arguments, dict):
-                return False
+                return None
             calls.append((message_index, call.get("id"), name, arguments))
 
-    # This gate runs on the provider request after the second planned tool
-    # call. The deterministic fixture intentionally emits one call per turn.
-    if len(calls) != 2:
-        return False
+    if len(calls) < 2:
+        return None
 
-    observe_index, observe_id, observe_name, observe_args = calls[0]
-    read_index, read_id, read_name, read_args = calls[1]
-    observe_command = TOOL_STEPS[0][1]["command"]
+    observe_index, observe_id, observe_name, observe_args = calls[-2]
+    read_index, read_id, read_name, read_args = calls[-1]
+    observe_command = observe_args.get("command")
     observe_prefix = "desktopctl observe "
-    if not observe_command.startswith(observe_prefix):
-        return False
+    if (
+        observe_name != "exec"
+        or not isinstance(observe_command, str)
+        or not observe_command.startswith(observe_prefix)
+    ):
+        return None
     screenshot_path = observe_command[len(observe_prefix):]
     if (
         not screenshot_path
-        or observe_name != "exec"
-        or observe_args.get("command") != observe_command
+        or not screenshot_path.startswith("/tmp/")
+        or not screenshot_path.endswith(".png")
+        or ".." in screenshot_path.split("/")
         or read_name != "read"
         or read_args != {"path": screenshot_path}
         or not isinstance(observe_id, str)
@@ -274,7 +357,7 @@ def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
         or not read_id
         or observe_id == read_id
     ):
-        return False
+        return None
 
     observe_results = [
         (index, message)
@@ -288,7 +371,7 @@ def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
         len(observe_results) != 1
         or _message_text(observe_results[0][1].get("content")).strip() != screenshot_path
     ):
-        return False
+        return None
 
     read_results = [
         (index, message)
@@ -299,17 +382,13 @@ def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
         and message.get("tool_call_id") == read_id
     ]
     if len(read_results) != 1:
-        return False
+        return None
 
     read_result_index, read_result = read_results[0]
-    read_content = read_result.get("content")
-    # Some compatible providers preserve media on the tool result itself.
-    if contains_image_payload(read_content):
-        return True
+    direct_image = _extract_png_bytes(read_result.get("content"))
+    if direct_image is not None:
+        return direct_image
 
-    # OpenClaw's OpenAI Chat Completions adapter relocates tool-result images
-    # into a user message. The marker binds this image carrier to the read
-    # result above; an image elsewhere in history is not sufficient.
     next_assistant_index = next(
         (
             index
@@ -319,37 +398,71 @@ def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
         ),
         len(messages),
     )
-    # The installed OpenClaw adapter emits a generic
-    # "Attached image(s) from tool result:" carrier. Bind it by strict
-    # adjacency to the uniquely correlated successful read result above. If an
-    # adapter supplies an explicit source index, require the expected read label.
     carrier_index = read_result_index + 1
     if carrier_index >= next_assistant_index:
-        return False
+        return None
     carrier = messages[carrier_index]
     if not isinstance(carrier, dict) or carrier.get("role") != "user":
-        return False
+        return None
     content = carrier.get("content")
     marker_lines = [
         line.strip().lower()
         for line in _message_text(content).splitlines()
         if "image(s) from tool result" in line.lower()
     ]
-    if len(marker_lines) != 1:
-        return False
-    marker = marker_lines[0]
-    allowed_labels = {
+    if len(marker_lines) != 1 or marker_lines[0] not in {
         "attached image(s) from tool result:",
         "image(s) from tool result #1 (read):",
-    }
-    if marker not in allowed_labels:
-        return False
-    return contains_image_payload(content)
+    }:
+        return None
+    return _extract_png_bytes(content)
+
+
+def screenshot_read_response_has_image(messages: list[dict[str, Any]]) -> bool:
+    """Require the latest observed screenshot to reach the provider as valid PNG bytes."""
+    return _latest_screenshot_png(messages) is not None
+
+
+def _locate_phrase_from_latest_screenshot(
+    messages: list[dict[str, Any]], phrase: str
+) -> tuple[int, int]:
+    image_bytes = _latest_screenshot_png(messages)
+    if image_bytes is None:
+        raise ValueError(
+            "matching desktop screenshot was not returned to the model before GUI action"
+        )
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".png") as handle:
+            handle.write(image_bytes)
+            handle.flush()
+            return locate_text(handle.name, phrase)
+    except Exception as exc:
+        raise ValueError(
+            f"could not locate {phrase!r} in the latest desktop screenshot "
+            f"({type(exc).__name__})"
+        ) from exc
 
 
 def _message_shape_summary(messages: list[dict[str, Any]]) -> list[list[Any]]:
     """Return compact structural diagnostics; never include prompts or image bytes."""
-    expected_path = TOOL_STEPS[0][1]["command"].split(maxsplit=2)[2]
+    read_paths = [
+        call.get("function", {})
+        for message in messages
+        if isinstance(message, dict) and message.get("role") == "assistant"
+        for call in (message.get("tool_calls") or [])
+        if isinstance(call, dict) and isinstance(call.get("function"), dict)
+    ]
+    parsed_read_paths = []
+    for function in read_paths:
+        arguments = function.get("arguments")
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except (json.JSONDecodeError, TypeError):
+                arguments = {}
+        if function.get("name") == "read" and isinstance(arguments, dict):
+            parsed_read_paths.append(arguments.get("path"))
+    expected_path = parsed_read_paths[-1] if parsed_read_paths else TOOL_STEPS[0][1]["command"].split(maxsplit=2)[2]
     summary: list[list[Any]] = []
     start_index = max(0, len(messages) - 6)
     for index, message in enumerate(messages[-6:], start=start_index):
@@ -414,11 +527,6 @@ def completion_for_messages(messages: list[dict[str, Any]], *, created: int | No
     if not isinstance(messages, list):
         raise ValueError("messages must be a list")
     step = tool_call_count(messages)
-    if step == 2 and not screenshot_read_response_has_image(messages):
-        raise ValueError(
-            "screenshot image payload was not returned to the model before GUI action; wire_shape="
-            + json.dumps(_message_shape_summary(messages), separators=(",", ":"))
-        )
     response: dict[str, Any] = {
         "id": f"chatcmpl-desktop-stub-{step}",
         "object": "chat.completion",
@@ -427,8 +535,18 @@ def completion_for_messages(messages: list[dict[str, Any]], *, created: int | No
         "choices": [],
         "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
     }
-    if step < len(TOOL_STEPS):
+    if step in DYNAMIC_CLICK_STEPS:
+        x, y = _locate_phrase_from_latest_screenshot(messages, DYNAMIC_CLICK_STEPS[step])
+        name, arguments = "exec", {"command": f"desktopctl click {x} {y}"}
+    elif step < len(TOOL_STEPS):
         name, arguments = TOOL_STEPS[step]
+        if arguments is None:
+            raise ValueError(f"desktop model stub has no deterministic action for step {step}")
+    else:
+        name = ""
+        arguments = {}
+
+    if step < len(TOOL_STEPS):
         call = {
             "id": f"call_desktop_stub_{step}",
             "type": "function",

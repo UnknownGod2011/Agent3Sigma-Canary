@@ -64,6 +64,8 @@ jobs:
         run: |
           python workflow/images/desktop_baseline/test_safe_container_export.py
           uv run python workflow/images/desktop_baseline/test_workspace_copyback_cleanup.py
+          uv run python workflow/images/desktop_baseline/test_bind_mount_handoff.py
+          uv run python workflow/images/desktop_baseline/test_bind_mount_runner.py
 
       - name: Prepare desktop baseline image context
         run: |
@@ -175,6 +177,92 @@ jobs:
             ln -sf /usr/local/bin/agentcanary-reference-openclaw /usr/local/bin/openclaw
           docker stop "$container" >/dev/null
           docker commit "$container" agentcanary-desktop-reference >/dev/null
+
+      - name: Compare task-scoped bind-mount artifact handoff (repeat twice)
+        env:
+          DOCKER_IMAGE: agentcanary-desktop-reference
+        run: |
+          set -euo pipefail
+          for attempt in first repeat; do
+            results_dir="$RUNNER_TEMP/desktop-bind-mount-$attempt"
+            rm -rf "$results_dir"
+
+            uv run python workflow/images/desktop_baseline/run_bind_mount_benchmark.py \
+              --model reference/desktop \
+              --suite task_9000_desktop_notes_gui \
+              --docker \
+              --timeout-multiplier 1.0 \
+              --output-dir "$results_dir" \
+              --verbose
+
+            uv run python workflow/images/desktop_baseline/verify_benchmark.py "$results_dir"
+          done
+          echo "two post-teardown bind-mount handoffs reproduced the independently graded GUI state"
+
+      - name: Prove the no-mount negative control fails host-side grading
+        env:
+          DOCKER_IMAGE: agentcanary-desktop-reference
+        run: |
+          set -euo pipefail
+          results_dir="$RUNNER_TEMP/desktop-no-bind-mount-results"
+          rm -rf "$results_dir"
+
+          uv run python workflow/images/desktop_baseline/run_bind_mount_benchmark.py \
+            --no-artifact-mount \
+            --no-artifact-copyback \
+            --assert-container-state-before-stop \
+            --model reference/desktop \
+            --suite task_9000_desktop_notes_gui \
+            --docker \
+            --timeout-multiplier 1.0 \
+            --output-dir "$results_dir" \
+            --verbose
+
+          python - "$results_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          task_id = "task_9000_desktop_notes_gui"
+          candidates = list(root.glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+          assert candidates, f"no no-mount control artifact found under {root}"
+          artifact = max(candidates, key=lambda path: path.stat().st_mtime_ns)
+          data = json.loads(artifact.read_text(encoding="utf-8"))
+          grading = data.get("grading", {})
+          assert data.get("task_id") == task_id, data.get("task_id")
+          assert grading.get("max_score") == 1.0, grading
+          assert grading.get("score") == 0.0, grading
+          assert grading.get("breakdown", {}).get("desktop_baseline_valid") == 0.0, grading
+
+          calls = []
+          image_reads = []
+          for event in data.get("transcript", []):
+              if not isinstance(event, dict) or event.get("type") != "message":
+                  continue
+              message = event.get("message", {})
+              if not isinstance(message, dict) or message.get("role") != "assistant":
+                  continue
+              for item in message.get("content", []):
+                  if not isinstance(item, dict) or item.get("type") != "toolCall":
+                      continue
+                  args = item.get("arguments", {})
+                  if isinstance(args, dict):
+                      command = args.get("command")
+                      if isinstance(command, str):
+                          calls.append(command.lower())
+                      path = args.get("path")
+                      if item.get("name") == "read" and isinstance(path, str):
+                          image_reads.append(path.lower())
+
+          assert any("desktopctl observe" in command for command in calls), calls
+          assert any("desktopctl click" in command for command in calls), calls
+          assert any("desktopctl type" in command for command in calls), calls
+          assert any("desktopctl key" in command for command in calls), calls
+          assert any(path.endswith(".png") for path in image_reads), image_reads
+          print("no-mount control: GUI trajectory completed inside Docker, but host grading scored 0.0 after teardown")
+          print(f"artifact: {artifact}")
+          PY
 
       - name: Run full AgentCanary desktop lifecycle
         env:
@@ -440,6 +528,8 @@ jobs:
               "reference-repeat": "desktop-reference-results-repeat",
               "openclaw-stub-first": "desktop-openclaw-stub-first",
               "openclaw-stub-repeat": "desktop-openclaw-stub-repeat",
+              "bind-mount-first": "desktop-bind-mount-first",
+              "bind-mount-repeat": "desktop-bind-mount-repeat",
           }
           evidence_dir = runner_temp / "desktop-state-evidence"
           shutil.rmtree(evidence_dir, ignore_errors=True)
@@ -536,6 +626,7 @@ jobs:
           for first, repeat in (
               ("reference-first", "reference-repeat"),
               ("openclaw-stub-first", "openclaw-stub-repeat"),
+              ("bind-mount-first", "bind-mount-repeat"),
           ):
               assert tool_sequences[first] == tool_sequences[repeat], (
                   "repeated desktop runs produced different ordered tool-call sequences",
@@ -571,6 +662,26 @@ jobs:
               negative_state,
           )
 
+          bind_negative_candidates = list(
+              (runner_temp / "desktop-no-bind-mount-results").glob(
+                  f"job_*/task_{task_id}/task_{task_id}.json"
+              )
+          )
+          assert len(bind_negative_candidates) == 1, bind_negative_candidates
+          bind_negative_path = bind_negative_candidates[0]
+          bind_negative_bytes = bind_negative_path.read_bytes()
+          bind_negative = json.loads(bind_negative_bytes)
+          bind_negative_grade = bind_negative.get("grading", {})
+          assert bind_negative.get("task_id") == task_id, bind_negative.get("task_id")
+          assert bind_negative_grade.get("score") == 0.0 and bind_negative_grade.get("max_score") == 1.0, bind_negative_grade
+          assert bind_negative_grade.get("breakdown", {}).get("desktop_baseline_valid") == 0.0, bind_negative_grade
+          bind_negative_workspace = checked_workspace(bind_negative.get("workspace"), "no-bind-mount-control")
+          bind_negative_state = bind_negative_workspace / "desktop_baseline_state.json"
+          assert not bind_negative_state.exists() and not bind_negative_state.is_symlink(), (
+              "no-bind-mount control unexpectedly persisted grader state to host",
+              bind_negative_state,
+          )
+
           evidence_dir.mkdir(parents=True)
           for label, result_path, result_bytes, state_path, state_bytes, call_digest in validated_states:
               state_name = f"{label}.json"
@@ -587,6 +698,12 @@ jobs:
           manifest["negative_control"] = {
               "result_path": str(negative_path.relative_to(runner_temp)),
               "result_sha256": hashlib.sha256(negative_bytes).hexdigest(),
+              "score": 0.0,
+              "state_file_copied_to_host": False,
+          }
+          manifest["negative_control_bind_mount"] = {
+              "result_path": str(bind_negative_path.relative_to(runner_temp)),
+              "result_sha256": hashlib.sha256(bind_negative_bytes).hexdigest(),
               "score": 0.0,
               "state_file_copied_to_host": False,
           }
@@ -607,6 +724,8 @@ jobs:
             ${{ runner.temp }}/desktop-reference-results-repeat/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-openclaw-stub-first/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-openclaw-stub-repeat/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
+            ${{ runner.temp }}/desktop-bind-mount-*/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
+            ${{ runner.temp }}/desktop-no-bind-mount-results/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-no-copyback-results/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-state-evidence/**
           if-no-files-found: warn

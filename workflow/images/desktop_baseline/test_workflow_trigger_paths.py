@@ -72,7 +72,7 @@ def main() -> None:
         "missing native OpenClaw bind-mount lifecycle experiment"
     )
     step_start = lifecycle_source.index(native_bind_mount_step)
-    step_end = lifecycle_source.find("\\n      - name:", step_start + len(native_bind_mount_step))
+    step_end = lifecycle_source.find("\n      - name:", step_start + len(native_bind_mount_step))
     native_step = lifecycle_source[step_start:step_end if step_end >= 0 else None]
     for required in (
         "DOCKER_IMAGE: agentcanary-desktop-openclaw-stub",

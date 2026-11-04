@@ -12,7 +12,7 @@ The image preserves the official OpenClaw + mock-api runner contract and adds:
 - a deterministic Tk notes application
 - `desktopctl observe` for PNG screenshots
 - `desktopctl click`, `type`, and `key` for mouse/keyboard input
-- a machine-checkable state artifact at `/tmp/agentcanary-desktop/desktop_baseline_state.json`, outside the agent workspace during interaction; after execution, the adapter reads this fixed regular file with `docker exec` and writes it into the host-side grading workspace
+- a machine-checkable state artifact at `/tmp/agentcanary-desktop/desktop_baseline_state.json`; the original reference adapter exports it with a bounded `docker exec` read before teardown, while a separate CI path validates a task-scoped host bind mount and copies the validated artifact into the host-side grading workspace
 - bounded transcript export of regular `sessions/*.jsonl` files through `docker exec`; the experimental adapter does not use container-to-host `docker cp` or tar extraction
 
 ## Scope and isolation limitation
@@ -51,6 +51,27 @@ evidence: the local provider follows a scripted plan. It complements the referen
 controller by testing the real OpenClaw tool dispatch/provider/transcript path
 without API credentials, external model-provider calls, or per-run API cost.
 It does not change the documented container isolation limitation.
+
+## Task-scoped artifact handoff comparison
+
+The CI workflow compares the existing pre-teardown export with a task-scoped
+bind mount at `/tmp/agentcanary-desktop`. The mount is a fresh host temporary
+directory for each run. After the container stops, the adapter accepts only a
+bounded, regular, single-link state file and writes it into the task's host
+workspace before the existing `grade_task` call.
+
+The comparison covers two repeated OCR-reference runs and two repeated native
+OpenClaw CLI runs against the deterministic local provider, all using the bind
+mount. Each positive run scored 1.0/1.0; each repeated pair produced identical
+state and normalized tool-sequence hashes. The no-mount and no-copyback controls
+recorded the GUI tool trajectory but scored 0.0/1.0 because the host grader could
+not see the state artifact.
+
+This is a fork-only lifecycle wrapper, not a first-class AgentCanary API. The
+bind mount is writable and visible to container root; it is an artifact-handoff
+experiment, not a secure evidence channel or isolation boundary. The local
+provider is scripted, so these results do not establish autonomous model quality
+or semantic screenshot understanding.
 
 ## Build the research image
 

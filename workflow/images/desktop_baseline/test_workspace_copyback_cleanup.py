@@ -19,6 +19,22 @@ class SafeArtifactExportCleanupTests(unittest.TestCase):
                 runner._stop_with_artifact_export()
             stop.assert_called_once_with()
 
+    def test_negative_control_stops_even_if_state_assertion_raises(self):
+        with (patch.object(runner.docker,"is_active",return_value=True),
+              patch.object(runner,"_assert_container_state_before_teardown",side_effect=RuntimeError("state invalid")),
+              patch.object(runner,"_original_stop") as stop):
+            with self.assertRaisesRegex(RuntimeError,"state invalid"):
+                runner._stop_after_container_state_assertion()
+            stop.assert_called_once_with()
+
+    def test_negative_control_asserts_before_stopping(self):
+        events=[]
+        with (patch.object(runner.docker,"is_active",return_value=True),
+              patch.object(runner,"_assert_container_state_before_teardown",side_effect=lambda:events.append("assert")),
+              patch.object(runner,"_original_stop",side_effect=lambda:events.append("stop"))):
+            runner._stop_after_container_state_assertion()
+        self.assertEqual(events,["assert","stop"])
+
     def test_artifact_export_precedes_normal_stop(self):
         events=[]
         with (patch.object(runner.docker,"is_active",return_value=True),

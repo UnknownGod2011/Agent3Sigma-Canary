@@ -192,9 +192,12 @@ print("state artifact verified outside the agent workspace")
 
 
 def _stop_after_container_state_assertion() -> None:
-    if docker.is_active():
-        _assert_container_state_before_teardown()
-    _original_stop()
+    # A failed diagnostic assertion must not leave the Docker task container running.
+    try:
+        if docker.is_active():
+            _assert_container_state_before_teardown()
+    finally:
+        _original_stop()
 
 
 def _stop_with_artifact_export() -> None:

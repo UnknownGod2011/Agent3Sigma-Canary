@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, "/opt/agentcanary-desktop")
-from desktop_ocr import locate_text
+from desktop_ocr import locate_save_button, locate_text
 
 OPENCLAW_HOME = Path("/root/.openclaw")
 AGENTS_DIR = OPENCLAW_HOME / "agents"
@@ -274,7 +274,7 @@ def cmd_agent(args: argparse.Namespace) -> int:
 
     if save_screenshot is None:
         raise RuntimeError("no post-edit desktop screenshot was captured")
-    save_x, save_y = locate_text(save_screenshot, "Save")
+    save_x, save_y = locate_save_button(save_screenshot)
     save_command = f"desktopctl click {save_x} {save_y}"
     _record_tool(
         events,

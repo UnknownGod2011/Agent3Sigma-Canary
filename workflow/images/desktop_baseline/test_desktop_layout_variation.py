@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, "/opt/agentcanary-desktop")
-from desktop_ocr import locate_text
+from desktop_ocr import locate_save_button, locate_text
 
 
 def run(*args):
@@ -46,7 +46,7 @@ run("desktopctl", "key", "Home")
 run("desktopctl", "key", "shift+End")
 run("desktopctl", "type", target)
 run("desktopctl", "observe", str(after_path))
-save = locate_text(after_path, "Save")
+save = locate_save_button(after_path)
 run("desktopctl", "click", str(save[0]), str(save[1]))
 
 state = None

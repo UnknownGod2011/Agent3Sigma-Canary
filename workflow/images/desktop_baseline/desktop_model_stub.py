@@ -22,7 +22,7 @@ from typing import Any
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _OCR_DIR = _SCRIPT_DIR if (_SCRIPT_DIR / "desktop_ocr.py").is_file() else _SCRIPT_DIR / "desktop"
 sys.path.insert(0, str(_OCR_DIR))
-from desktop_ocr import locate_text
+from desktop_ocr import locate_save_button, locate_text
 
 HOST = "127.0.0.1"
 PORT = 8765
@@ -452,6 +452,25 @@ def _locate_phrase_from_latest_screenshot(
         ) from exc
 
 
+def _locate_save_button_from_latest_screenshot(messages: list[dict[str, Any]]) -> tuple[int, int]:
+    """Locate the Save control in the latest screenshot returned to the provider."""
+    image_bytes = _latest_screenshot_png(messages)
+    if image_bytes is None:
+        raise ValueError(
+            "matching desktop screenshot was not returned to the model before Save action"
+        )
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".png") as handle:
+            handle.write(image_bytes)
+            handle.flush()
+            return locate_save_button(handle.name)
+    except Exception as exc:
+        raise ValueError(
+            f"could not locate the Save button in the latest desktop screenshot "
+            f"({type(exc).__name__})"
+        ) from exc
+
+
 def _message_shape_summary(messages: list[dict[str, Any]]) -> list[list[Any]]:
     """Return compact structural diagnostics; never include prompts or image bytes."""
     read_paths = [
@@ -605,7 +624,7 @@ def completion_for_messages(messages: list[dict[str, Any]], *, created: int | No
                 ) from exc
             tool_call = ("exec", {"command": f"desktopctl observe {retry_path}"})
         else:
-            x, y = _locate_phrase_from_latest_screenshot(messages, "Save")
+            x, y = _locate_save_button_from_latest_screenshot(messages)
             tool_call = ("exec", {"command": f"desktopctl click {x} {y}"})
     elif step < len(TOOL_STEPS):
         name, arguments = TOOL_STEPS[step]

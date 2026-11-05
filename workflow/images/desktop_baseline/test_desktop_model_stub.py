@@ -143,13 +143,13 @@ def main() -> None:
     assert screenshot_read_response_has_image(first_history)
 
     second_history = _history(8, image_indices=(1, 7))
-    with patch.object(stub, "locate_text", side_effect=[(237, 153), (359, 334)]) as locate:
+    with patch.object(stub, "locate_text", return_value=(237, 153)) as locate, patch.object(
+        stub, "locate_save_button", return_value=(359, 334)
+    ) as locate_save:
         second = completion_for_messages(second_history, created=1)
     assert _next_tool(second) == ("exec", {"command": "desktopctl click 359 334"})
-    assert [call.args[1] for call in locate.call_args_list] == [
-        "AgentCanary desktop baseline complete",
-        "Save",
-    ]
+    assert locate.call_args.args[1] == "AgentCanary desktop baseline complete"
+    locate_save.assert_called_once()
     assert screenshot_read_response_has_image(second_history)
 
     with patch.object(stub, "locate_text", side_effect=LookupError("target not visible")):
@@ -184,13 +184,13 @@ def main() -> None:
         else:
             raise AssertionError("the provider must fail closed after two re-observations")
 
-    with patch.object(stub, "locate_text", side_effect=[(237, 153), (359, 334)]) as locate:
+    with patch.object(stub, "locate_text", return_value=(237, 153)) as locate, patch.object(
+        stub, "locate_save_button", return_value=(359, 334)
+    ) as locate_save:
         retry_two_visible = completion_for_messages(retry_two_history, created=1)
     assert _next_tool(retry_two_visible) == ("exec", {"command": "desktopctl click 359 334"})
-    assert [call.args[1] for call in locate.call_args_list] == [
-        "AgentCanary desktop baseline complete",
-        "Save",
-    ]
+    assert locate.call_args.args[1] == "AgentCanary desktop baseline complete"
+    locate_save.assert_called_once()
 
     observe_one_steps = list(TOOL_STEPS) + [
         ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-1.png"}),

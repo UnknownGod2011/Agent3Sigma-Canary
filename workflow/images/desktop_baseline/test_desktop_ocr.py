@@ -18,6 +18,13 @@ TSV = """level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twid
 5\t1\t1\t1\t2\t1\t345\t363\t29\t10\t96.8\tSave
 """
 
+SAVE_BUTTON_TSV = """level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext
+5\t1\t1\t1\t1\t1\t275\t190\t35\t12\t96.0\tsave.
+5\t1\t1\t1\t2\t1\t443\t409\t32\t10\t93.0\tSave
+5\t1\t1\t1\t3\t1\t426\t441\t23\t10\t97.0\tNot
+5\t1\t1\t1\t3\t2\t454\t440\t40\t11\t97.0\tsaved
+"""
+
 
 class DesktopOCRTests(unittest.TestCase):
     def test_phrase_box_uses_union_center(self) -> None:
@@ -62,6 +69,39 @@ class DesktopOCRTests(unittest.TestCase):
         words = desktop_ocr.parse_tesseract_tsv(duplicate)
         with self.assertRaisesRegex(LookupError, "found 2"):
             desktop_ocr.find_text_box(words, "note")
+
+    def test_save_button_uses_unsaved_status_to_disambiguate_instruction_text(self) -> None:
+        words = desktop_ocr.parse_tesseract_tsv(SAVE_BUTTON_TSV)
+        self.assertEqual(desktop_ocr.find_save_button_box(words), (459, 414))
+
+    def test_save_button_fails_closed_without_status_anchor(self) -> None:
+        words = desktop_ocr.parse_tesseract_tsv(SAVE_BUTTON_TSV)
+        words = [word for word in words if word.text not in {"Not", "saved"}]
+        with self.assertRaisesRegex(LookupError, "Not saved"):
+            desktop_ocr.find_save_button_box(words)
+
+    def test_save_button_fails_closed_when_two_controls_match_status_geometry(self) -> None:
+        words = desktop_ocr.parse_tesseract_tsv(SAVE_BUTTON_TSV)
+        words.append(
+            desktop_ocr.OCRWord("Save", 96.0, 443, 389, 32, 10, (1, 1, 1, 4))
+        )
+        with self.assertRaisesRegex(LookupError, "found 2 candidates"):
+            desktop_ocr.find_save_button_box(words)
+
+    def test_locate_save_button_uses_sparse_tesseract_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "screenshot.png"
+            path.write_bytes(b"fixture")
+            with patch.object(
+                desktop_ocr.subprocess,
+                "run",
+                return_value=SimpleNamespace(returncode=0, stdout=SAVE_BUTTON_TSV, stderr=""),
+            ) as run:
+                self.assertEqual(desktop_ocr.locate_save_button(path), (459, 414))
+                self.assertEqual(
+                    run.call_args.args[0],
+                    ["tesseract", str(path), "stdout", "--psm", "11", "tsv"],
+                )
 
     def test_low_confidence_token_is_ignored(self) -> None:
         low = TSV.replace("96.6\tnote", "20.0\tnote")

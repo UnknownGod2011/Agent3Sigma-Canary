@@ -51,7 +51,7 @@ def main() -> None:
         "grader-only state evidence must be retained with the task result JSONs"
     )
     for field in (
-        '"schema_version": 1',
+        '"schema_version": 2',
         '"repository": os.environ.get("GITHUB_REPOSITORY", "")',
         '"commit_sha": os.environ.get("GITHUB_SHA", "")',
         '"ref": os.environ.get("GITHUB_REF", "")',
@@ -60,6 +60,10 @@ def main() -> None:
         '"run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT", "")',
         '"event_name": os.environ.get("GITHUB_EVENT_NAME", "")',
         '"task_definition_sha256": hashlib.sha256(task_definition.read_bytes()).hexdigest()',
+        '"tool_sequence_sha256": tool_digest',
+        '"action_sequence_sha256": action_digest',
+        '"observation_count": observation_count',
+        '"reobservation_count": observation_count - 2',
     ):
         assert field in lifecycle_source, f"evidence manifest missing provenance field: {field}"
     print("desktop evidence manifest records source, run, and task-definition provenance")

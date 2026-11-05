@@ -522,9 +522,9 @@ jobs:
           )
           for marker in forbidden_runtime_reads:
               assert marker not in source, marker
-          assert "from desktop_ocr import locate_text" in source
+          assert "from desktop_ocr import locate_save_button, locate_text" in source
           assert 'locate_text(initial_screenshot, "baseline note")' in source
-          assert 'locate_text(save_screenshot, "Save")' in source
+          assert "locate_save_button(save_screenshot)" in source
 
           wrapper = Path(
               "workflow/images/desktop_baseline/run_reference_benchmark.py"

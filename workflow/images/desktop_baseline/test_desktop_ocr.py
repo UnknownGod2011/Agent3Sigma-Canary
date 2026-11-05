@@ -37,7 +37,7 @@ class DesktopOCRTests(unittest.TestCase):
             (237, 153),
         )
 
-    def test_matches_visually_aligned_tokens_across_tesseract_blocks(self) -> None
+    def test_matches_visually_aligned_tokens_across_tesseract_blocks(self) -> None:
         words = desktop_ocr.parse_tesseract_tsv(TSV)
         split = [
             words[0],

@@ -10,7 +10,7 @@ The image preserves the official OpenClaw + mock-api runner contract and adds:
 
 - Xvfb virtual X11 display (`:99`)
 - a deterministic Tk notes application
-- `desktopctl observe` for PNG screenshots
+- `desktopctl observe` for PNG screenshots; reusing a screenshot path refreshes that exact file
 - `desktopctl click`, `type`, and `key` for mouse/keyboard input
 - a machine-checkable state artifact at `/tmp/agentcanary-desktop/desktop_baseline_state.json`; the original reference adapter exports it with a bounded `docker exec` read before teardown, while a separate CI path validates a task-scoped host bind mount and copies the validated artifact into the host-side grading workspace
 - bounded transcript export of regular `sessions/*.jsonl` files through `docker exec`; the experimental adapter does not use container-to-host `docker cp` or tar extraction
@@ -70,9 +70,12 @@ workspace before the existing `grade_task` call.
 The comparison covers two repeated OCR-reference runs and two repeated native
 OpenClaw CLI runs against the deterministic local provider, all using the bind
 mount. Each positive run scored 1.0/1.0; each repeated pair produced identical
-state and normalized tool-sequence hashes. The no-mount and no-copyback controls
-recorded the GUI tool trajectory but scored 0.0/1.0 because the host grader could
-not see the state artifact.
+final state and GUI-action sequence hashes. The evidence manifest retains each
+raw tool-sequence hash and records observation/retry counts; those counts may
+differ by up to two bounded re-observations while the Tk event loop processes
+typed input. The no-mount and no-copyback controls recorded the GUI tool
+trajectory but scored 0.0/1.0 because the host grader could not see the state
+artifact.
 
 This is a fork-only lifecycle wrapper, not a first-class AgentCanary API. The
 bind mount is writable and visible to container root; it is an artifact-handoff

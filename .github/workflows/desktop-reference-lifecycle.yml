@@ -615,7 +615,7 @@ jobs:
 
           task_definition = Path("tasks/desktop_baseline/task_9000_desktop_notes_gui.md")
           manifest = {
-              "schema_version": 1,
+              "schema_version": 2,
               "provenance": provenance,
               "task_id": task_id,
               "task_definition_sha256": hashlib.sha256(task_definition.read_bytes()).hexdigest(),
@@ -624,9 +624,9 @@ jobs:
           }
           expected_state_paths = set()
           validated_states = []
-          tool_sequences = {}
+          action_sequences = {}
 
-          def normalized_tool_sequence(result, label):
+          def normalized_gui_actions(result, label):
               transcript = result.get("transcript", [])
               assert isinstance(transcript, list), (label, "transcript is not a list")
               calls = []
@@ -650,9 +650,48 @@ jobs:
                       call_ids.add(call_id)
                       calls.append({"name": name, "arguments": arguments})
               assert calls, (label, "no assistant tool calls found")
-              encoded = json.dumps(calls, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-              return calls, hashlib.sha256(encoded).hexdigest()
 
+              # The task explicitly permits up to two re-observations while the
+              # Tk event loop finishes processing typed input. Those screenshot
+              # retries can vary with CI scheduling; the semantic GUI actions
+              # and independently graded final state must remain reproducible.
+              observations = []
+              reads = []
+              actions = []
+              for call in calls:
+                  name = call["name"]
+                  arguments = call["arguments"]
+                  if name == "exec":
+                      command = arguments.get("command")
+                      assert isinstance(command, str), (label, call)
+                      if command.startswith("desktopctl observe "):
+                          screenshot_path = command.split(maxsplit=2)[2]
+                          assert screenshot_path.startswith("/tmp/") and screenshot_path.endswith(".png"), (label, command)
+                          observations.append(screenshot_path)
+                      else:
+                          assert command.startswith("desktopctl "), (label, command)
+                          operation = command.split(maxsplit=2)[1]
+                          assert operation in {"click", "key", "type"}, (label, command)
+                          actions.append(command)
+                  elif name == "read":
+                      screenshot_path = arguments.get("path")
+                      assert isinstance(screenshot_path, str) and screenshot_path.endswith(".png"), (label, call)
+                      reads.append(screenshot_path)
+                  else:
+                      raise AssertionError((label, "unexpected tool in desktop trajectory", call))
+
+              assert 2 <= len(observations) <= 4, (label, "expected initial + post-edit observation and at most two retries", observations)
+              assert observations == reads, (label, "every observed screenshot must be read in order", observations, reads)
+              operations = [command.split(maxsplit=2)[1] for command in actions]
+              assert operations == ["click", "key", "key", "type", "click"], (label, "unexpected GUI action sequence", actions)
+              encoded_actions = json.dumps(actions, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+              encoded_calls = json.dumps(calls, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+              return (
+                  actions,
+                  hashlib.sha256(encoded_actions).hexdigest(),
+                  len(observations),
+                  hashlib.sha256(encoded_calls).hexdigest(),
+              )
           def checked_workspace(raw_path, label):
               assert isinstance(raw_path, str), (label, raw_path)
               workspace = Path(raw_path)
@@ -676,8 +715,8 @@ jobs:
               assert grading.get("score") == 1.0 and grading.get("max_score") == 1.0, (label, grading)
               assert grading.get("breakdown", {}).get("desktop_baseline_valid") == 1.0, (label, grading)
 
-              calls, call_digest = normalized_tool_sequence(result, label)
-              tool_sequences[label] = calls
+              actions, action_digest, observation_count, tool_digest = normalized_gui_actions(result, label)
+              action_sequences[label] = actions
 
               workspace = checked_workspace(result.get("workspace"), label)
               assert workspace.is_dir(), (label, workspace)
@@ -687,7 +726,7 @@ jobs:
               state = json.loads(state_bytes)
               assert state == {"current_text": target, "saved": True, "text": target}, (label, state)
               expected_state_paths.add(state_path)
-              validated_states.append((label, result_path, result_bytes, state_path, state_bytes, call_digest))
+              validated_states.append((label, result_path, result_bytes, state_path, state_bytes, action_digest, observation_count, tool_digest))
 
           for first, repeat in (
               ("reference-first", "reference-repeat"),
@@ -695,12 +734,12 @@ jobs:
               ("bind-mount-first", "bind-mount-repeat"),
               ("bind-mount-openclaw-stub-first", "bind-mount-openclaw-stub-repeat"),
           ):
-              assert tool_sequences[first] == tool_sequences[repeat], (
-                  "repeated desktop runs produced different ordered tool-call sequences",
+              assert action_sequences[first] == action_sequences[repeat], (
+                  "repeated desktop runs produced different ordered GUI action sequences",
                   first,
                   repeat,
-                  tool_sequences[first],
-                  tool_sequences[repeat],
+                  action_sequences[first],
+                  action_sequences[repeat],
               )
 
           actual_state_paths = set(workspace_root.glob("*/agent_workspace/desktop_baseline_state.json"))
@@ -750,7 +789,7 @@ jobs:
           )
 
           evidence_dir.mkdir(parents=True)
-          for label, result_path, result_bytes, state_path, state_bytes, call_digest in validated_states:
+          for label, result_path, result_bytes, state_path, state_bytes, action_digest, observation_count, tool_digest in validated_states:
               state_name = f"{label}.json"
               (evidence_dir / state_name).write_bytes(state_bytes)
               manifest["positive_runs"].append({
@@ -759,7 +798,10 @@ jobs:
                   "result_sha256": hashlib.sha256(result_bytes).hexdigest(),
                   "state_file": state_name,
                   "state_sha256": hashlib.sha256(state_bytes).hexdigest(),
-                  "tool_sequence_sha256": call_digest,
+                  "tool_sequence_sha256": tool_digest,
+                  "action_sequence_sha256": action_digest,
+                  "observation_count": observation_count,
+                  "reobservation_count": observation_count - 2,
               })
 
           manifest["negative_control"] = {
@@ -778,7 +820,7 @@ jobs:
               json.dumps(manifest, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",
           )
-          print("preserved grader-only desktop state files, hashes, and repeatable tool-call sequences; negative-control state remains absent from host workspace")
+          print("preserved grader-only desktop state files, raw trajectory hashes, repeatable GUI actions, and bounded observation counts; negative-control state remains absent from host workspace")
           PY
 
       - name: Upload deterministic desktop lifecycle evidence

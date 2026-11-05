@@ -5,17 +5,29 @@ TARGET="AgentCanary desktop baseline complete"
 STATE="${DESKTOP_BASELINE_STATE:-/tmp/agentcanary-desktop/desktop_baseline_state.json}"
 BEFORE="/tmp/agentcanary-desktop-before.png"
 AFTER="/tmp/agentcanary-desktop-after.png"
+REUSED="/tmp/agentcanary-desktop-reused.png"
+
+screenshot_has_target() {
+  python3 - "$1" "$2" <<'PY'
+import sys
+sys.path.insert(0, "/opt/agentcanary-desktop")
+from desktop_ocr import locate_text
+locate_text(sys.argv[1], sys.argv[2])
+PY
+}
 
 cleanup() {
   desktopctl stop >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-rm -f "$STATE" "$BEFORE" "$AFTER"
+rm -f "$STATE" "$BEFORE" "$AFTER" "$REUSED"
 desktopctl start
 
 desktopctl observe "$BEFORE" >/dev/null
 [[ -s "$BEFORE" ]] || { echo "missing/empty pre-action screenshot" >&2; exit 1; }
+desktopctl observe "$REUSED" >/dev/null
+INITIAL_REUSED_SHA="$(sha256sum "$REUSED" | awk '{print $1}')"
 
 python3 - "$STATE" <<'PY'
 import json, sys
@@ -32,6 +44,24 @@ desktopctl click 320 180
 desktopctl key Home
 desktopctl key shift+End
 desktopctl type "$TARGET"
+
+# Reuse the exact same screenshot path after the visible editor changes. The
+# requested path must contain the fresh image, not a scrot-generated sibling.
+fresh_screenshot=false
+for _ in $(seq 1 3); do
+  desktopctl observe "$REUSED" >/dev/null
+  current_sha="$(sha256sum "$REUSED" | awk '{print $1}')"
+  if [[ "$current_sha" != "$INITIAL_REUSED_SHA" ]] && screenshot_has_target "$REUSED" "$TARGET"; then
+    fresh_screenshot=true
+    break
+  fi
+  sleep 0.25
+done
+[[ "$fresh_screenshot" == true ]] || {
+  echo "reused screenshot path did not refresh to show the exact target text" >&2
+  exit 1
+}
+
 # The Save button is deterministic in this fixed-size fixture. Clicking it
 # validates pointer delivery and invokes the actual Tk callback.
 desktopctl click 320 330

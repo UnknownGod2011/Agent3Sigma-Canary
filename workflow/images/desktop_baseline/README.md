@@ -44,10 +44,11 @@ CI also runs the task through the unmodified OpenClaw CLI against a credential-f
 local OpenAI-compatible provider. The provider emits a scripted sequence of normal
 tool calls. For both clicks, it decodes the screenshot attached to the matching
 `read` result and uses the same deterministic Tesseract OCR localizer as the
-reference controller to choose the editor and Save-button coordinates. It refuses
-either click unless the matching screenshot was returned to the provider. The
-ordinary AgentCanary transcript and independent task grader must still validate
-the saved GUI state.
+reference controller to choose the editor and Save-button coordinates. Before
+Save, it also requires the exact target text to be visible in a post-edit
+screenshot; it requests up to two additional observe/read cycles and refuses to
+save if the text remains incomplete. The ordinary AgentCanary transcript and
+independent task grader must still validate the saved GUI state.
 
 This is screenshot-conditioned deterministic control, not autonomous visual
 reasoning or model-quality evidence: the local provider follows a scripted plan

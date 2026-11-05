@@ -43,19 +43,19 @@ def _data_url(width: int = 800, height: int = 600) -> str:
     return "data:image/png;base64," + base64.b64encode(_png(width, height)).decode("ascii")
 
 
-def _history(
-    tool_calls: int,
+def _history_for_steps(
+    steps: list[tuple[str, dict | None]],
     *,
     image_indices: tuple[int, ...] = (1, 7),
     image_url: str | None = None,
 ) -> list[dict]:
-    """Build OpenAI Chat Completions history with OpenClaw image carriers."""
+    """Build OpenAI Chat Completions history with correlated OpenClaw image carriers."""
     messages = [{"role": "user", "content": "Complete the desktop notes task."}]
-    for index in range(tool_calls):
-        name, arguments = TOOL_STEPS[index]
+    for index, (name, arguments) in enumerate(steps):
         if arguments is None:
-            coordinates = "320 180" if index == 2 else "320 330"
-            arguments = {"command": f"desktopctl click {coordinates}"}
+            if index != 2:
+                raise AssertionError(f"unexpected dynamic action in fixture plan at step {index}")
+            arguments = {"command": "desktopctl click 124 152"}
         call_id = f"call-{index}"
         messages.append({
             "role": "assistant",
@@ -65,13 +65,11 @@ def _history(
                 "function": {"name": name, "arguments": json.dumps(arguments)},
             }],
         })
-
         if name == "exec" and arguments["command"].startswith("desktopctl observe "):
             result_content = arguments["command"].split(maxsplit=2)[2]
         else:
             result_content = "tool completed"
         messages.append({"role": "tool", "tool_call_id": call_id, "content": result_content})
-
         if name == "read" and index in image_indices:
             messages[-1]["content"] = "(see attached image)"
             messages.append({
@@ -84,6 +82,18 @@ def _history(
     return messages
 
 
+def _history(
+    tool_calls: int,
+    *,
+    image_indices: tuple[int, ...] = (1, 7),
+    image_url: str | None = None,
+) -> list[dict]:
+    steps = list(TOOL_STEPS)
+    if tool_calls > len(steps):
+        steps.append(("exec", {"command": "desktopctl click 359 334"}))
+    return _history_for_steps(steps[:tool_calls], image_indices=image_indices, image_url=image_url)
+
+
 def _next_tool(completion: dict) -> tuple[str, dict]:
     message = completion["choices"][0]["message"]
     call = message["tool_calls"][0]
@@ -91,7 +101,7 @@ def _next_tool(completion: dict) -> tuple[str, dict]:
 
 
 def main() -> None:
-    assert len(TOOL_STEPS) == 9
+    assert len(TOOL_STEPS) == 8
     valid_png = _png()
     valid_b64 = base64.b64encode(valid_png).decode("ascii")
     valid_url = _data_url()
@@ -133,11 +143,68 @@ def main() -> None:
     assert screenshot_read_response_has_image(first_history)
 
     second_history = _history(8, image_indices=(1, 7))
-    with patch.object(stub, "locate_text", return_value=(359, 334)) as locate:
+    with patch.object(stub, "locate_text", side_effect=[(237, 153), (359, 334)]) as locate:
         second = completion_for_messages(second_history, created=1)
     assert _next_tool(second) == ("exec", {"command": "desktopctl click 359 334"})
-    locate.assert_called_once()
+    assert [call.args[1] for call in locate.call_args_list] == [
+        "AgentCanary desktop baseline complete",
+        "Save",
+    ]
     assert screenshot_read_response_has_image(second_history)
+
+    with patch.object(stub, "locate_text", side_effect=LookupError("target not visible")):
+        retry_one = completion_for_messages(second_history, created=1)
+    assert _next_tool(retry_one) == (
+        "exec",
+        {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-1.png"},
+    )
+
+    retry_one_steps = list(TOOL_STEPS) + [
+        ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-1.png"}),
+        ("read", {"path": "/tmp/agentcanary-desktop/verify-1.png"}),
+    ]
+    retry_one_history = _history_for_steps(retry_one_steps, image_indices=(1, 7, 9))
+    with patch.object(stub, "locate_text", side_effect=LookupError("target not visible")):
+        retry_two = completion_for_messages(retry_one_history, created=1)
+    assert _next_tool(retry_two) == (
+        "exec",
+        {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-2.png"},
+    )
+
+    retry_two_steps = retry_one_steps + [
+        ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-2.png"}),
+        ("read", {"path": "/tmp/agentcanary-desktop/verify-2.png"}),
+    ]
+    retry_two_history = _history_for_steps(retry_two_steps, image_indices=(1, 7, 9, 11))
+    with patch.object(stub, "locate_text", side_effect=LookupError("target not visible")):
+        try:
+            completion_for_messages(retry_two_history, created=1)
+        except ValueError as exc:
+            assert "refusing Save" in str(exc)
+        else:
+            raise AssertionError("the provider must fail closed after two re-observations")
+
+    with patch.object(stub, "locate_text", side_effect=[(237, 153), (359, 334)]) as locate:
+        retry_two_visible = completion_for_messages(retry_two_history, created=1)
+    assert _next_tool(retry_two_visible) == ("exec", {"command": "desktopctl click 359 334"})
+    assert [call.args[1] for call in locate.call_args_list] == [
+        "AgentCanary desktop baseline complete",
+        "Save",
+    ]
+
+    observe_one_steps = list(TOOL_STEPS) + [
+        ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-1.png"}),
+    ]
+    assert _next_tool(completion_for_messages(_history_for_steps(observe_one_steps), created=1)) == (
+        "read", {"path": "/tmp/agentcanary-desktop/verify-1.png"}
+    )
+
+    observe_two_steps = retry_one_steps + [
+        ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-2.png"}),
+    ]
+    assert _next_tool(completion_for_messages(
+        _history_for_steps(observe_two_steps, image_indices=(1, 7, 9)), created=1
+    )) == ("read", {"path": "/tmp/agentcanary-desktop/verify-2.png"})
 
     try:
         completion_for_messages(_history(8, image_indices=(1,)), created=1)

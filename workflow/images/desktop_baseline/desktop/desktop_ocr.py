@@ -21,7 +21,7 @@ class OCRWord:
 
 
 def _normalize_token(value: str) -> str:
-    return value.strip(".,:;!?").casefold()
+    return value.strip(".,:;!?[](){}<>").casefold()
 
 
 def parse_tesseract_tsv(tsv: str, *, min_confidence: float = 35.0) -> list[OCRWord]:
@@ -62,57 +62,75 @@ def find_text_box(
 ) -> tuple[int, int]:
     """Return the center of one unique, visually aligned phrase match.
 
-    Tesseract can split adjacent words into different block/line identifiers.
-    Match by page and bounding-box alignment instead of trusting those layout
-    labels. Ambiguous or absent text fails closed.
+    Tesseract can split adjacent words into different block/line identifiers,
+    and word heights can vary enough to reorder same-row tokens by vertical
+    center. Cluster by page and vertical overlap first, then match left-to-right
+    within each visual row. Ambiguous or absent text fails closed.
     """
     target = tuple(_normalize_token(token) for token in phrase.split() if token)
     if not target:
         raise ValueError("phrase must contain at least one token")
 
-    ordered = sorted(
+    rows: list[list[OCRWord]] = []
+    for word in sorted(
         words,
-        key=lambda word: (word.line_key[0], word.top + word.height / 2, word.left),
-    )
+        key=lambda item: (item.line_key[0], item.top + item.height / 2, item.left),
+    ):
+        candidates: list[tuple[int, list[OCRWord]]] = []
+        for row in rows:
+            if row[0].line_key[0] != word.line_key[0]:
+                continue
+            row_top = max(item.top for item in row)
+            row_bottom = min(item.top + item.height for item in row)
+            overlap = min(row_bottom, word.top + word.height) - max(row_top, word.top)
+            min_height = min([item.height for item in row] + [word.height])
+            if overlap >= 0.4 * min_height:
+                candidates.append((overlap, row))
+        if candidates:
+            max(candidates, key=lambda item: item[0])[1].append(word)
+        else:
+            rows.append([word])
+
     matches: list[tuple[int, int]] = []
-    for index in range(len(ordered) - len(target) + 1):
-        sequence = ordered[index:index + len(target)]
-        if tuple(_normalize_token(word.text) for word in sequence) != target:
-            continue
-        if len({word.line_key[0] for word in sequence}) != 1:
-            continue
+    ordered_for_diagnostics: list[OCRWord] = []
+    for row in rows:
+        ordered = sorted(row, key=lambda word: word.left)
+        ordered_for_diagnostics.extend(ordered)
+        for index in range(len(ordered) - len(target) + 1):
+            sequence = ordered[index:index + len(target)]
+            if tuple(_normalize_token(word.text) for word in sequence) != target:
+                continue
+            top = max(word.top for word in sequence)
+            bottom = min(word.top + word.height for word in sequence)
+            min_height = min(word.height for word in sequence)
+            if bottom - top < 0.4 * min_height:
+                continue
+            gaps = [
+                right.left - (left.left + left.width)
+                for left, right in zip(sequence, sequence[1:])
+            ]
+            if any(
+                gap > 3 * max(left.height, right.height)
+                for gap, left, right in zip(gaps, sequence, sequence[1:])
+            ):
+                continue
+            if any(right.left < left.left for left, right in zip(sequence, sequence[1:])):
+                continue
 
-        top = max(word.top for word in sequence)
-        bottom = min(word.top + word.height for word in sequence)
-        min_height = min(word.height for word in sequence)
-        if bottom - top < 0.4 * min_height:
-            continue
-        gaps = [
-            right.left - (left.left + left.width)
-            for left, right in zip(sequence, sequence[1:])
-        ]
-        if any(
-            gap > 3 * max(left.height, right.height)
-            for gap, left, right in zip(gaps, sequence, sequence[1:])
-        ):
-            continue
-        if any(right.left < left.left for left, right in zip(sequence, sequence[1:])):
-            continue
-
-        left = min(word.left for word in sequence)
-        top = min(word.top for word in sequence)
-        right = max(word.left + word.width for word in sequence)
-        bottom = max(word.top + word.height for word in sequence)
-        x = (left + right) // 2
-        y = (top + bottom) // 2
-        if 0 <= x < screen_width and 0 <= y < screen_height:
-            matches.append((x, y))
+            left = min(word.left for word in sequence)
+            top = min(word.top for word in sequence)
+            right = max(word.left + word.width for word in sequence)
+            bottom = max(word.top + word.height for word in sequence)
+            x = (left + right) // 2
+            y = (top + bottom) // 2
+            if 0 <= x < screen_width and 0 <= y < screen_height:
+                matches.append((x, y))
 
     if len(matches) != 1:
         visible = [
             f"{word.text!r}@{word.left},{word.top},{word.width},{word.height}"
             f"/{word.confidence:.0f}"
-            for word in ordered[:40]
+            for word in ordered_for_diagnostics[:40]
         ]
         raise LookupError(
             f"expected exactly one OCR match for {phrase!r}, found {len(matches)}; "

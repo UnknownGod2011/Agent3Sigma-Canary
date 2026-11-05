@@ -249,9 +249,31 @@ def cmd_agent(args: argparse.Namespace) -> int:
             lambda argv=argv: _run_gui(*argv),
         )
 
-    # 3. Re-observe after editing and locate the visible Save button from the
-    #    new screenshot before clicking it.
-    save_screenshot = observe_and_read(SAVE_SCREENSHOT_PATH)
+    # 3. Re-observe after editing. Save is allowed only after OCR finds the
+    #    exact target in the editor; retry twice if X11/Tk has not processed all
+    #    queued keyboard events before the first screenshot.
+    save_screenshot = None
+    for attempt in range(3):
+        screenshot_path = (
+            SAVE_SCREENSHOT_PATH
+            if attempt == 0
+            else SAVE_SCREENSHOT_PATH.with_name(
+                f"{SAVE_SCREENSHOT_PATH.stem}-retry-{attempt}.png"
+            )
+        )
+        save_screenshot = observe_and_read(screenshot_path)
+        try:
+            locate_text(save_screenshot, TARGET_TEXT)
+            break
+        except LookupError as exc:
+            if attempt == 2:
+                raise RuntimeError(
+                    "target text was not visible in the editor after two re-observations; refusing Save"
+                ) from exc
+            time.sleep(0.25)
+
+    if save_screenshot is None:
+        raise RuntimeError("no post-edit desktop screenshot was captured")
     save_x, save_y = locate_text(save_screenshot, "Save")
     save_command = f"desktopctl click {save_x} {save_y}"
     _record_tool(

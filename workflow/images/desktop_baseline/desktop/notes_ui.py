@@ -13,7 +13,6 @@ from pathlib import Path
 
 STATE_PATH = Path(os.environ.get("DESKTOP_BASELINE_STATE", "/tmp/agentcanary-desktop/desktop_baseline_state.json"))
 INITIAL_TEXT = os.environ.get("DESKTOP_BASELINE_INITIAL_TEXT", "baseline note")
-TARGET_TEXT = os.environ.get("DESKTOP_BASELINE_TARGET_TEXT", "AgentCanary desktop baseline complete")
 
 
 def write_state(*, saved: bool, text: str, current_text: str) -> None:
@@ -32,7 +31,7 @@ root.resizable(False, False)
 heading = tk.Label(root, text="Desktop Notes", font=("Sans", 18, "bold"))
 heading.pack(pady=(24, 8))
 
-instruction = tk.Label(root, text=f"Replace the note with: {TARGET_TEXT}")
+instruction = tk.Label(root, text="Replace the note with the requested text, then save.")
 instruction.pack(pady=(0, 12))
 
 editor = tk.Text(root, width=66, height=8, font=("Sans", 12), name="editor")

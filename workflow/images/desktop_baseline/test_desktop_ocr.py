@@ -25,7 +25,19 @@ class DesktopOCRTests(unittest.TestCase):
         self.assertEqual(desktop_ocr.find_text_box(words, "baseline note"), (122, 162))
         self.assertEqual(desktop_ocr.find_text_box(words, "Save"), (359, 368))
 
-    def test_matches_visually_aligned_tokens_across_tesseract_blocks(self) -> None:
+    def test_strips_screenshot_border_bracket_and_keeps_same_row_order(self) -> None:
+        words = [
+            desktop_ocr.OCRWord("[AgentCanary", 96.6, 67, 146, 109, 15, (1, 1, 1, 1)),
+            desktop_ocr.OCRWord("desktop", 96.6, 183, 146, 66, 15, (1, 1, 1, 1)),
+            desktop_ocr.OCRWord("baseline", 96.6, 257, 146, 68, 12, (1, 1, 1, 1)),
+            desktop_ocr.OCRWord("complete", 96.6, 332, 146, 76, 15, (1, 1, 1, 1)),
+        ]
+        self.assertEqual(
+            desktop_ocr.find_text_box(words, "AgentCanary desktop baseline complete"),
+            (237, 153),
+        )
+
+    def test_matches_visually_aligned_tokens_across_tesseract_blocks(self) -> None
         words = desktop_ocr.parse_tesseract_tsv(TSV)
         split = [
             words[0],

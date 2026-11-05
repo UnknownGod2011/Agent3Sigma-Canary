@@ -38,10 +38,19 @@ TOOL_STEPS: tuple[tuple[str, dict[str, str] | None], ...] = (
     ("exec", {"command": "desktopctl type 'AgentCanary desktop baseline complete'"}),
     ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/save.png"}),
     ("read", {"path": "/tmp/agentcanary-desktop/save.png"}),
-    ("exec", None),  # Screenshot-derived Save-button click.
 )
 
-DYNAMIC_CLICK_STEPS = {2: "baseline note", 8: "Save"}
+TARGET_TEXT = "AgentCanary desktop baseline complete"
+DYNAMIC_CLICK_STEPS = {2: "baseline note"}
+DYNAMIC_SAVE_STEPS = {8, 10, 12}
+DYNAMIC_REOBSERVE_PATHS = {
+    8: "/tmp/agentcanary-desktop/verify-1.png",
+    10: "/tmp/agentcanary-desktop/verify-2.png",
+}
+DYNAMIC_READ_PATHS = {
+    9: "/tmp/agentcanary-desktop/verify-1.png",
+    11: "/tmp/agentcanary-desktop/verify-2.png",
+}
 
 
 def _valid_png_bytes(image_bytes: bytes) -> bool:
@@ -523,6 +532,44 @@ def _message_shape_summary(messages: list[dict[str, Any]]) -> list[list[Any]]:
     return summary
 
 
+def _last_tool_call(messages: list[dict[str, Any]]) -> tuple[str, dict[str, Any]] | None:
+    """Return the latest assistant tool call, if its arguments are well-formed."""
+    for message in reversed(messages):
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        calls = message.get("tool_calls")
+        if not isinstance(calls, list) or not calls:
+            continue
+        call = calls[-1]
+        function = call.get("function") if isinstance(call, dict) else None
+        if not isinstance(function, dict):
+            return None
+        name = function.get("name")
+        arguments = function.get("arguments")
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except (json.JSONDecodeError, TypeError):
+                return None
+        if not isinstance(name, str) or not isinstance(arguments, dict):
+            return None
+        return name, arguments
+    return None
+
+
+def _last_call_was_click(messages: list[dict[str, Any]]) -> bool:
+    last = _last_tool_call(messages)
+    if last is None:
+        return False
+    name, arguments = last
+    command = arguments.get("command")
+    return (
+        name == "exec"
+        and isinstance(command, str)
+        and command.startswith("desktopctl click ")
+    )
+
+
 def completion_for_messages(messages: list[dict[str, Any]], *, created: int | None = None) -> dict[str, Any]:
     if not isinstance(messages, list):
         raise ValueError("messages must be a list")
@@ -535,18 +582,39 @@ def completion_for_messages(messages: list[dict[str, Any]], *, created: int | No
         "choices": [],
         "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
     }
+
+    tool_call: tuple[str, dict[str, Any]] | None = None
     if step in DYNAMIC_CLICK_STEPS:
         x, y = _locate_phrase_from_latest_screenshot(messages, DYNAMIC_CLICK_STEPS[step])
-        name, arguments = "exec", {"command": f"desktopctl click {x} {y}"}
+        tool_call = ("exec", {"command": f"desktopctl click {x} {y}"})
+    elif step in DYNAMIC_READ_PATHS:
+        # After a Save click the next provider turn is the final response;
+        # otherwise it must read the newly captured retry screenshot.
+        if not _last_call_was_click(messages):
+            tool_call = ("read", {"path": DYNAMIC_READ_PATHS[step]})
+    elif step in DYNAMIC_SAVE_STEPS:
+        try:
+            _locate_phrase_from_latest_screenshot(messages, TARGET_TEXT)
+        except ValueError as exc:
+            if "(LookupError)" not in str(exc):
+                raise
+            retry_path = DYNAMIC_REOBSERVE_PATHS.get(step)
+            if retry_path is None:
+                raise ValueError(
+                    "target text was not visually confirmed after two re-observations; refusing Save"
+                ) from exc
+            tool_call = ("exec", {"command": f"desktopctl observe {retry_path}"})
+        else:
+            x, y = _locate_phrase_from_latest_screenshot(messages, "Save")
+            tool_call = ("exec", {"command": f"desktopctl click {x} {y}"})
     elif step < len(TOOL_STEPS):
         name, arguments = TOOL_STEPS[step]
         if arguments is None:
             raise ValueError(f"desktop model stub has no deterministic action for step {step}")
-    else:
-        name = ""
-        arguments = {}
+        tool_call = (name, arguments)
 
-    if step < len(TOOL_STEPS):
+    if tool_call is not None:
+        name, arguments = tool_call
         call = {
             "id": f"call_desktop_stub_{step}",
             "type": "function",

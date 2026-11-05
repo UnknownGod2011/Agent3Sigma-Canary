@@ -320,10 +320,10 @@ def _successful_result(
 
 def _evidence(
     transcript: list,
-) -> tuple[list[tuple[int, int, int, str]], list[tuple[int, int, int, str]], list[tuple[int, int, str]], bool]:
+) -> tuple[list[tuple[int, int, int, str]], list[tuple[int, int, int, str]], list[tuple[int, int, int, str]], bool]:
     observations: list[tuple[int, int, int, str]] = []
     image_reads: list[tuple[int, int, int, str]] = []
-    gui_actions: list[tuple[int, int, str]] = []
+    gui_actions: list[tuple[int, int, int, str]] = []
     results = _tool_results(transcript)
     seen_call_ids = set()
     invalid_or_bypassed = False
@@ -373,7 +373,7 @@ def _evidence(
                     if operation == "observe":
                         observations.append((call_sequence, event_index, result_event_index, str(detail)))
                     else:
-                        gui_actions.append((call_sequence, event_index, command))
+                        gui_actions.append((call_sequence, event_index, result_event_index, command))
             elif name == "read":
                 path = args.get("path")
                 result_event_index = _successful_result(results, call_id, event_index, require_image=True)
@@ -402,12 +402,12 @@ def _evidence(
 def _inspected_before_action(
     observations: list[tuple[int, int, int, str]],
     image_reads: list[tuple[int, int, int, str]],
-    gui_actions: list[tuple[int, int, str]],
+    gui_actions: list[tuple[int, int, int, str]],
 ) -> bool:
     first_action = min(gui_actions, key=lambda item: item[0], default=None)
     if first_action is None:
         return False
-    first_action_sequence, first_action_call_index, _ = first_action
+    first_action_sequence, first_action_call_index = first_action[0], first_action[1]
     return any(
         observation_sequence < read_sequence < first_action_sequence
         and observation_path == read_path
@@ -415,6 +415,43 @@ def _inspected_before_action(
         and observation_result_index < read_call_event_index
         and read_result_index < first_action_call_index
         for observation_sequence, _, observation_result_index, observation_path in observations
+        for read_sequence, read_call_event_index, read_result_index, read_path in image_reads
+    )
+
+
+def _inspected_after_edit_before_save(
+    observations: list[tuple[int, int, int, str]],
+    image_reads: list[tuple[int, int, int, str]],
+    gui_actions: list[tuple[int, int, int, str]],
+) -> bool:
+    def has_operation(command: str, expected: str) -> bool:
+        parsed = _parse_allowed_command(command)
+        return parsed is not None and any(operation == expected for operation, _ in parsed)
+
+    type_action = min(
+        (item for item in gui_actions if has_operation(item[3], "type")),
+        key=lambda item: item[0],
+        default=None,
+    )
+    if type_action is None:
+        return False
+    save_click = max(
+        (
+            item for item in gui_actions
+            if item[0] > type_action[0] and has_operation(item[3], "click")
+        ),
+        key=lambda item: item[0],
+        default=None,
+    )
+    if save_click is None:
+        return False
+    return any(
+        type_action[0] < observation_sequence < read_sequence < save_click[0]
+        and type_action[2] < observation_call_event_index
+        and observation_result_index < read_call_event_index
+        and read_result_index < save_click[1]
+        and observation_path == read_path
+        for observation_sequence, observation_call_event_index, observation_result_index, observation_path in observations
         for read_sequence, read_call_event_index, read_result_index, read_path in image_reads
     )
 
@@ -479,6 +516,7 @@ def main() -> int:
         "transcript_present": bool(transcript),
         "observed_desktop": bool(observations),
         "inspected_screenshot": _inspected_before_action(observations, image_reads, gui_actions),
+        "post_edit_screenshot_before_save": _inspected_after_edit_before_save(observations, image_reads, gui_actions),
         "used_gui_action": bool(gui_actions),
         "no_obvious_bypass": not bypassed,
     }

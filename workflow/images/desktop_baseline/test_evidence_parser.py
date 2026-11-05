@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib_grading import grade_task  # noqa: E402
 from lib_tasks import TaskLoader  # noqa: E402
-from verify_benchmark import _evidence, _inspected_before_action  # noqa: E402
+from verify_benchmark import _evidence, _inspected_before_action, _inspected_after_edit_before_save  # noqa: E402
 
 TASK_ID = "task_9000_desktop_notes_gui"
 TARGET = "AgentCanary desktop baseline complete"
@@ -69,7 +69,7 @@ def _tool_result_event(
 def transcript(
     commands: tuple[str, ...],
     *,
-    read_after: int = 1,
+    read_after: int | tuple[int, ...] = (1, 6),
     read_path: str = "/tmp/before.png",
     include_read: bool = True,
     read_result_error: bool = False,
@@ -80,6 +80,7 @@ def transcript(
 ) -> list[dict]:
     events = []
     call_index = 0
+    read_after_indices = {read_after} if isinstance(read_after, int) else set(read_after)
 
     def add_call(
         name: str,
@@ -107,7 +108,7 @@ def transcript(
             result_text=f"executed: {command}",
             is_error=command == failed_command,
         )
-        if include_read and index == read_after:
+        if include_read and index in read_after_indices:
             add_call(
                 "read",
                 {"path": read_path},
@@ -244,7 +245,9 @@ def main() -> None:
         "desktopctl observe /tmp/before.png",
         "desktopctl click 320 180",
         "desktopctl key Home",
+        "desktopctl key shift+End",
         f"desktopctl type '{TARGET}'",
+        "desktopctl observe /tmp/before.png",
         "desktopctl click 320 330",
     )
     spoofed_commands = (
@@ -263,6 +266,13 @@ def main() -> None:
 
         valid_trace = transcript(commands)
         assert grade(task, workspace, valid_trace) == 1.0
+        valid_evidence = _evidence(valid_trace)
+        assert _inspected_after_edit_before_save(*valid_evidence[:3])
+
+        missing_post_edit_read = transcript(commands, read_after=1)
+        assert grade(task, workspace, missing_post_edit_read) == 0.0
+        missing_post_edit_evidence = _evidence(missing_post_edit_read)
+        assert not _inspected_after_edit_before_save(*missing_post_edit_evidence[:3])
 
         # A tool-call batch cannot prove the screenshot was returned and read
         # before the first GUI action was issued.
@@ -318,7 +328,6 @@ def main() -> None:
         finally:
             os.chdir(original_cwd)
 
-        valid_evidence = _evidence(valid_trace)
         observations, image_reads, actions, bypassed = valid_evidence
         assert observations and image_reads and actions and not bypassed
         assert _inspected_before_action(observations, image_reads, actions)

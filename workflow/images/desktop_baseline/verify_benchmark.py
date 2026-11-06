@@ -451,7 +451,7 @@ def _inspected_after_edit_before_save(
     if first_post_edit_click is None:
         return False
     return any(
-        type_action[0] < observation_sequence < read_sequence < save_click[0]
+        type_action[0] < observation_sequence < read_sequence < first_post_edit_click[0]
         and type_action[2] < observation_call_event_index
         and observation_result_index < read_call_event_index
         and read_result_index < first_post_edit_click[1]

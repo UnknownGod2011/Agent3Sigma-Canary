@@ -36,6 +36,9 @@ jobs:
       - name: Install AgentCanary Python runner
         run: python -m pip install --disable-pip-version-check uv
 
+      - name: Run required pre-setup regression tests
+        run: uv run python workflow/images/desktop_baseline/test_required_pre_setup.py
+
       - name: Run desktop evidence regression tests
         run: uv run python workflow/images/desktop_baseline/test_evidence_parser.py
 

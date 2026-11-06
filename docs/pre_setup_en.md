@@ -351,9 +351,11 @@ The current implementation calls the agent once under the same `session_id`, wit
 
 Use `run_command` when the other setup types cannot prepare the state your task
 needs—for example, to run a skill's documented setup command. The command runs
-after workspace delivery and before the main task prompt. It is best-effort: a
-malformed command, non-zero exit, or timeout is silently skipped without
-aborting the task.
+after workspace delivery and before the main task prompt. By default it is
+best-effort: a malformed command, non-zero exit, or timeout is skipped without
+aborting the task. Set `required: true` only when the task cannot be evaluated
+meaningfully without that setup step; then those failures abort the task before
+the agent is invoked. The default remains best-effort for existing tasks.
 
 | Field | Required | Default | Description |
 | --- | --- | --- | --- |
@@ -361,6 +363,7 @@ aborting the task.
 | `cwd` | No | Current task agent workspace | Working directory. In Docker runs, use a path inside the task environment. |
 | `env` | No | — | Additional environment variables for this command. |
 | `timeout` | No | `120` | Maximum execution time in seconds. |
+| `required` | No | `false` | If true, a malformed command, timeout, or non-zero exit fails the task instead of being skipped. |
 
 Example: create a file that the agent will use later in the task.
 

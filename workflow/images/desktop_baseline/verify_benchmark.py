@@ -437,7 +437,10 @@ def _inspected_after_edit_before_save(
     )
     if type_action is None:
         return False
-    save_click = max(
+    # Match the task grader's conservative boundary: the screenshot must be
+    # inspected before the first click after the final edit, not merely before
+    # some later click that happens to follow an earlier Save.
+    first_post_edit_click = min(
         (
             item for item in gui_actions
             if item[0] > type_action[0] and has_operation(item[3], "click")
@@ -445,13 +448,13 @@ def _inspected_after_edit_before_save(
         key=lambda item: item[0],
         default=None,
     )
-    if save_click is None:
+    if first_post_edit_click is None:
         return False
     return any(
         type_action[0] < observation_sequence < read_sequence < save_click[0]
         and type_action[2] < observation_call_event_index
         and observation_result_index < read_call_event_index
-        and read_result_index < save_click[1]
+        and read_result_index < first_post_edit_click[1]
         and observation_path == read_path
         for observation_sequence, observation_call_event_index, observation_result_index, observation_path in observations
         for read_sequence, read_call_event_index, read_result_index, read_path in image_reads

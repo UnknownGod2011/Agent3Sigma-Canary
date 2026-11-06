@@ -291,6 +291,22 @@ def main() -> None:
         assert grade(task, workspace, re_edit_after_observation) == 0.0
         assert not _inspected_after_edit_before_save(*re_edit_evidence[:3])
 
+        # A screenshot captured after the first post-edit click cannot retroactively
+        # certify that click, even if another click occurs later.
+        save_before_observation = transcript((
+            "desktopctl observe /tmp/before.png",
+            "desktopctl click 320 180",
+            "desktopctl key Home",
+            "desktopctl key shift+End",
+            f"desktopctl type '{TARGET}'",
+            "desktopctl click 320 330",
+            "desktopctl observe /tmp/before.png",
+            "desktopctl click 320 180",
+        ), read_after=(1, 7))
+        save_before_evidence = _evidence(save_before_observation)
+        assert grade(task, workspace, save_before_observation) == 0.0
+        assert not _inspected_after_edit_before_save(*save_before_evidence[:3])
+
         # A tool-call batch cannot prove the screenshot was returned and read
         # before the first GUI action was issued.
         batched_trace = batch_first_observation_read_action(valid_trace)

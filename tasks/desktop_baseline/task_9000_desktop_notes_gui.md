@@ -442,7 +442,10 @@ def grade(transcript: list, workspace_path: str) -> dict:
             and any(item[3] == "key" and item[0] < type_index for item in gui_actions)
             and any(item[3] == "click" and item[0] > type_index for item in gui_actions)
         )
-        save_click = max(
+        # The first post-edit click is the earliest point at which the agent
+        # could activate Save. Using the last click would let it save first,
+        # observe afterward, and satisfy the ordering check with an unrelated click.
+        first_post_edit_click = min(
             (
                 item for item in gui_actions
                 if item[3] == "click" and item[0] > type_index
@@ -450,12 +453,12 @@ def grade(transcript: list, workspace_path: str) -> dict:
             key=lambda item: item[0],
             default=None,
         )
-        if save_click is not None:
+        if first_post_edit_click is not None:
             post_edit_inspected_before_save = any(
-                type_index < observation_sequence < read_sequence < save_click[0]
+                type_index < observation_sequence < read_sequence < first_post_edit_click[0]
                 and type_action[2] < observation_call_event_index
                 and observation_result_index < read_call_event_index
-                and read_result_index < save_click[1]
+                and read_result_index < first_post_edit_click[1]
                 and observation_path == read_path
                 for observation_sequence, observation_call_event_index, observation_result_index, observation_path in observations
                 for read_sequence, read_call_event_index, read_result_index, read_path in image_reads

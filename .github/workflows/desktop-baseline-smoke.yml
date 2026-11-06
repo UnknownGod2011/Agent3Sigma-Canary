@@ -81,7 +81,7 @@ jobs:
 
           IMAGE_FIXTURE = make_image_fixture()
 
-          def transcript(*commands, read_image=True):
+          def transcript(*commands, read_image=True, image_read_indices=(1, 6)):
               events = []
               call_index = 0
 
@@ -116,7 +116,7 @@ jobs:
 
               for index, command in enumerate(commands, start=1):
                   add_call("exec", {"command": command}, f"executed: {command}")
-                  if read_image and index in (1, 6):
+                  if read_image and index in image_read_indices:
                       path = "/tmp/before.png" if index == 1 else "/tmp/after.png"
                       add_call(
                           "read",
@@ -153,6 +153,28 @@ jobs:
                   skill_dir=Path("skills"),
               )
               assert valid.score == 1.0, valid
+
+              # Regression: a Save click before the post-edit screenshot must
+              # not be rescued by an unrelated click after the screenshot.
+              save_before_observe = grade_task(
+                  task=task,
+                  execution_result={
+                      "workspace": str(workspace),
+                      "transcript": transcript(
+                          "desktopctl observe /tmp/before.png",
+                          "desktopctl click 320 180",
+                          "desktopctl key Home",
+                          "desktopctl key shift+End",
+                          "desktopctl type 'AgentCanary desktop baseline complete'",
+                          "desktopctl click 320 330",
+                          "desktopctl observe /tmp/after.png",
+                          "desktopctl click 320 180",
+                          image_read_indices=(1, 7),
+                      ),
+                  },
+                  skill_dir=Path("skills"),
+              )
+              assert save_before_observe.score == 0.0, save_before_observe
 
               capture_only = grade_task(
                   task=task,

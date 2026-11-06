@@ -176,6 +176,29 @@ jobs:
               )
               assert save_before_observe.score == 0.0, save_before_observe
 
+              # A screenshot cannot certify a later re-edit, even if the final
+              # saved text happens to match the target.
+              re_edit_after_observation = grade_task(
+                  task=task,
+                  execution_result={
+                      "workspace": str(workspace),
+                      "transcript": transcript(
+                          "desktopctl observe /tmp/before.png",
+                          "desktopctl click 320 180",
+                          "desktopctl key Home",
+                          "desktopctl key shift+End",
+                          "desktopctl type 'AgentCanary desktop baseline complete'",
+                          "desktopctl observe /tmp/after.png",
+                          "desktopctl key Home",
+                          "desktopctl key shift+End",
+                          "desktopctl type 'AgentCanary desktop baseline complete'",
+                          "desktopctl click 320 330",
+                      ),
+                  },
+                  skill_dir=Path("skills"),
+              )
+              assert re_edit_after_observation.score == 0.0, re_edit_after_observation
+
               capture_only = grade_task(
                   task=task,
                   execution_result={

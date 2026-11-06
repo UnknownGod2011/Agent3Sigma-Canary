@@ -432,7 +432,9 @@ def grade(transcript: list, workspace_path: str) -> dict:
         item for item in gui_actions
         if item[3] == "type" and item[4] == target
     ]
-    type_action = min(type_actions, key=lambda item: item[0], default=None)
+    # Anchor verification to the final full-target edit, not an earlier one.
+    # A screenshot taken before a later re-edit cannot certify the final text.
+    type_action = max(type_actions, key=lambda item: item[0], default=None)
     required_actions_ok = False
     post_edit_inspected_before_save = False
     if type_action is not None:

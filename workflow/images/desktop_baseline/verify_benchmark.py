@@ -428,7 +428,9 @@ def _inspected_after_edit_before_save(
         parsed = _parse_allowed_command(command)
         return parsed is not None and any(operation == expected for operation, _ in parsed)
 
-    type_action = min(
+    # Match the task grader: a screenshot must follow the final full-target edit.
+    # Otherwise an earlier edit could be inspected and then silently re-edited.
+    type_action = max(
         (item for item in gui_actions if has_operation(item[3], "type")),
         key=lambda item: item[0],
         default=None,

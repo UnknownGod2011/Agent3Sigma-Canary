@@ -274,6 +274,23 @@ def main() -> None:
         missing_post_edit_evidence = _evidence(missing_post_edit_read)
         assert not _inspected_after_edit_before_save(*missing_post_edit_evidence[:3])
 
+        # The post-edit screenshot becomes stale if the agent edits again before Save.
+        re_edit_after_observation = transcript((
+            "desktopctl observe /tmp/before.png",
+            "desktopctl click 320 180",
+            "desktopctl key Home",
+            "desktopctl key shift+End",
+            f"desktopctl type '{TARGET}'",
+            "desktopctl observe /tmp/before.png",
+            "desktopctl key Home",
+            "desktopctl key shift+End",
+            f"desktopctl type '{TARGET}'",
+            "desktopctl click 320 330",
+        ))
+        re_edit_evidence = _evidence(re_edit_after_observation)
+        assert grade(task, workspace, re_edit_after_observation) == 0.0
+        assert not _inspected_after_edit_before_save(*re_edit_evidence[:3])
+
         # A tool-call batch cannot prove the screenshot was returned and read
         # before the first GUI action was issued.
         batched_trace = batch_first_observation_read_action(valid_trace)

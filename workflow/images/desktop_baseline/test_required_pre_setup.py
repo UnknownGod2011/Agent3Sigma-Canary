@@ -78,5 +78,59 @@ class RequiredRunCommandTests(unittest.TestCase):
             run_cmd.assert_not_called()
 
 
+    def test_required_setup_failure_aborts_before_agent_invocation(self) -> None:
+        from types import SimpleNamespace
+
+        task = SimpleNamespace(
+            task_id="task_required_setup",
+            name="Required setup task",
+            category="desktop_baseline",
+            timeout_seconds=120,
+            prompt="Perform the task.",
+            frontmatter={
+                "pre_setup": [
+                    {
+                        "type": "run_command",
+                        "required": True,
+                        "command": "desktopctl start",
+                    }
+                ]
+            },
+        )
+        workspace = Path("/tmp/scry/" + "b" * 32 + "/agent_workspace")
+
+        with (
+            patch.object(lib_agent, "cleanup_agent_sessions"),
+            patch.object(lib_agent, "prepare_task_workspace"),
+            patch.object(lib_agent.docker, "is_active", return_value=True),
+            patch.object(lib_agent.docker, "copy_to_container"),
+            patch.object(
+                lib_agent,
+                "_run_deferred_pre_setup_commands",
+                side_effect=RuntimeError(
+                    "run_command: task task_required_setup required pre_setup command failed"
+                ),
+            ),
+            patch.object(lib_agent, "run_openclaw_prompt") as run_prompt,
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "required pre_setup command failed"
+            ):
+                lib_agent.execute_openclaw_task(
+                    task=task,
+                    agent_id="required-setup-test",
+                    model_id="test/model",
+                    run_id="required-setup-run",
+                    timeout_multiplier=1.0,
+                    skill_dir=Path("/tmp/skills"),
+                    task_agent_workspace_root=Path("/tmp/scry"),
+                    task_agent_workspace_root_relate=workspace,
+                    local_task_agent_workspace_root_relate=workspace,
+                )
+
+            run_prompt.assert_not_called()
+
+
+
 if __name__ == "__main__":
     unittest.main()

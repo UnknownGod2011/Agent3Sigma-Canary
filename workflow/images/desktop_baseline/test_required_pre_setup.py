@@ -111,7 +111,7 @@ class RequiredRunCommandTests(unittest.TestCase):
                     "run_command: task task_required_setup required pre_setup command failed"
                 ),
             ),
-            patch.object(lib_agent, "run_openclaw_prompt") as run_prompt,
+            patch.object(lib_agent.docker, "run_cmd") as agent_command,
         ):
             with self.assertRaisesRegex(
                 RuntimeError, "required pre_setup command failed"
@@ -128,7 +128,7 @@ class RequiredRunCommandTests(unittest.TestCase):
                     local_task_agent_workspace_root_relate=workspace,
                 )
 
-            run_prompt.assert_not_called()
+            agent_command.assert_not_called()
 
 
 

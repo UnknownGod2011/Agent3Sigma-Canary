@@ -98,7 +98,7 @@ def main() -> None:
                     f"OpenClaw agent invocation occurred after required setup failure: {recorded_commands!r}"
                 )
 
-            result_files = list(output_dir.glob(f"job_*/task_task_{TASK_ID}/task_{TASK_ID}.json"))
+            result_files = list(output_dir.glob(f"job_*/task_{TASK_ID}/task_{TASK_ID}.json"))
             if len(result_files) != 1:
                 raise AssertionError(f"expected exactly one task result, found {result_files!r}")
             result = json.loads(result_files[0].read_text(encoding="utf-8"))
@@ -115,7 +115,7 @@ def main() -> None:
                 raise AssertionError(f"failed setup was not graded zero: {grading!r}")
             if grading.get("breakdown", {}).get("required_setup_failure") != 0.0:
                 raise AssertionError(f"unexpected grading breakdown: {grading!r}")
-            if "required pre_setup command failed" not in str(result.get("stderr", "")):
+            if "required pre_setup command failed: exited with status 17" not in str(result.get("stderr", "")):
                 raise AssertionError(
                     f"required setup failure was not recorded: {result.get('stderr')!r}"
                 )

@@ -80,6 +80,11 @@ jobs:
       - name: Build desktop baseline image
         run: docker build -t agentcanary-desktop-baseline "$BUILD_DIR"
 
+      - name: Verify required setup failure aborts a Docker-backed run
+        env:
+          DOCKER_IMAGE: agentcanary-desktop-baseline
+        run: uv run python workflow/images/desktop_baseline/test_required_setup_docker.py
+
       - name: Verify OCR-derived GUI actions follow a moved window
         run: python workflow/images/desktop_baseline/test_desktop_layout_variation.py
 

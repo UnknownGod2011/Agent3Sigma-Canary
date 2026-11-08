@@ -457,19 +457,49 @@ jobs:
             --output-dir "$results_dir" \
             --verbose
 
-          python - "$results_dir" <<'PY'
+          python - "$results_dir" "$RUNNER_TEMP/desktop-reference-results" <<'PY'
           import json
           import sys
           from pathlib import Path
 
           task_id = "task_9000_desktop_notes_gui"
-          root = Path(sys.argv[1])
-          candidates = list(root.glob(f"job_*/task_{task_id}/task_{task_id}.json"))
-          assert candidates, f"no negative-control artifact found under {root}"
-          artifact = max(candidates, key=lambda path: path.stat().st_mtime_ns)
-          data = json.loads(artifact.read_text(encoding="utf-8"))
-          grading = data.get("grading", {})
-          assert data.get("task_id") == task_id, data.get("task_id")
+
+          def load_result(root: Path, label: str) -> dict:
+              candidates = list(root.glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+              assert len(candidates) == 1, (label, candidates)
+              return json.loads(candidates[0].read_text(encoding="utf-8"))
+
+          def trajectory_signature(data: dict, label: str) -> list[tuple[str, dict]]:
+              transcript = data.get("transcript")
+              assert isinstance(transcript, list) and transcript, (label, "missing transcript")
+              assert data.get("transcript_length") == len(transcript), (
+                  label, data.get("transcript_length"), len(transcript)
+              )
+              calls = []
+              for event in transcript:
+                  if not isinstance(event, dict) or event.get("type") != "message":
+                      continue
+                  message = event.get("message", {})
+                  if not isinstance(message, dict) or message.get("role") != "assistant":
+                      continue
+                  for item in message.get("content", []):
+                      if not isinstance(item, dict) or item.get("type") != "toolCall":
+                          continue
+                      name = item.get("name")
+                      arguments = item.get("arguments")
+                      assert isinstance(name, str) and isinstance(arguments, dict), (label, item)
+                      calls.append((name, arguments))
+              assert calls, (label, "no tool calls")
+              return calls
+
+          negative = load_result(Path(sys.argv[1]), "negative-control")
+          positive = load_result(Path(sys.argv[2]), "positive-reference")
+          grading = negative.get("grading", {})
+          positive_grading = positive.get("grading", {})
+          assert negative.get("task_id") == task_id, negative.get("task_id")
+          assert negative.get("status") == "success", negative.get("status")
+          assert positive.get("status") == "success", positive.get("status")
+          assert positive_grading.get("score") == 1.0, positive_grading
           assert grading.get("max_score") == 1.0, grading
           assert grading.get("score") == 0.0, (
               "no-copyback control unexpectedly passed host-side grading",
@@ -478,27 +508,23 @@ jobs:
           breakdown = grading.get("breakdown", {})
           assert breakdown.get("desktop_baseline_valid") == 0.0, breakdown
 
+          negative_calls = trajectory_signature(negative, "negative-control")
+          positive_calls = trajectory_signature(positive, "positive-reference")
+          assert negative_calls == positive_calls, (
+              "no-copyback control did not reproduce the positive GUI tool trajectory",
+              positive_calls,
+              negative_calls,
+          )
+
           commands = []
           image_reads = []
-          for event in data.get("transcript", []):
-              if not isinstance(event, dict) or event.get("type") != "message":
-                  continue
-              message = event.get("message", {})
-              if not isinstance(message, dict) or message.get("role") != "assistant":
-                  continue
-              for item in message.get("content", []):
-                  if not isinstance(item, dict) or item.get("type") != "toolCall":
-                      continue
-                  args = item.get("arguments", {})
-                  if isinstance(args, dict):
-                      command = args.get("command")
-                      if isinstance(command, str):
-                          commands.append(command.lower())
-                      path = args.get("path")
-                      if item.get("name") == "read" and isinstance(path, str):
-                          image_reads.append(path.lower())
-                  elif isinstance(args, str):
-                      commands.append(args.lower())
+          for name, arguments in negative_calls:
+              command = arguments.get("command")
+              if name == "exec" and isinstance(command, str):
+                  commands.append(command.lower())
+              path = arguments.get("path")
+              if name == "read" and isinstance(path, str):
+                  image_reads.append(path.lower())
 
           assert any("desktopctl observe" in command for command in commands), commands
           assert any(path.endswith(".png") for path in image_reads), image_reads
@@ -509,10 +535,9 @@ jobs:
           assert not any(marker in command for command in commands for marker in forbidden), commands
 
           print(
-              "negative control confirmed: the reference trajectory contains screenshot "
-              "inspection and GUI actions, but host-side grading scores 0.0 without workspace copyback"
+              "negative control confirmed: the same successful screenshot-grounded GUI tool "
+              "trajectory scores 1.0 with grader-state copyback and 0.0 without it"
           )
-          print(f"artifact: {artifact}")
           PY
 
       - name: Assert reference trajectory stays inside GUI boundary

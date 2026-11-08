@@ -458,6 +458,7 @@ jobs:
             --verbose
 
           python - "$results_dir" "$RUNNER_TEMP/desktop-reference-results" <<'PY'
+          import hashlib
           import json
           import sys
           from pathlib import Path
@@ -492,6 +493,14 @@ jobs:
               assert calls, (label, "no tool calls")
               return calls
 
+          def transcript_sha256(data: dict, label: str) -> str:
+              transcript = data.get("transcript")
+              assert isinstance(transcript, list) and transcript, (label, "missing transcript")
+              canonical = json.dumps(
+                  transcript, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+              ).encode("utf-8")
+              return hashlib.sha256(canonical).hexdigest()
+
           negative = load_result(Path(sys.argv[1]), "negative-control")
           positive = load_result(Path(sys.argv[2]), "positive-reference")
           grading = negative.get("grading", {})
@@ -514,6 +523,15 @@ jobs:
               "no-copyback control did not reproduce the positive GUI tool trajectory",
               positive_calls,
               negative_calls,
+          )
+
+          negative_transcript_sha256 = transcript_sha256(negative, "negative-control")
+          positive_transcript_sha256 = transcript_sha256(positive, "positive-reference")
+          assert negative_transcript_sha256 == positive_transcript_sha256, (
+              "no-copyback control did not reproduce the complete positive transcript, "
+              "including tool results and screenshot payloads",
+              positive_transcript_sha256,
+              negative_transcript_sha256,
           )
 
           commands = []

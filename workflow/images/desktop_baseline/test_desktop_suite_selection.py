@@ -33,7 +33,7 @@ def main() -> None:
 
     assert benchmark._select_task_ids(tasks, "desktop_baseline") == [desktop.task_id]
     assert benchmark._select_task_ids(tasks, "non-security") == [root_task.task_id]
-    assert benchmark._select_task_ids(tasks, "task_9000") == [desktop.task_id]
+    assert benchmark._select_task_ids(tasks, "task_9000") == ["task_9000"]
     assert benchmark._select_task_ids(tasks, "all") is None
 
     # Preserve broad grading-type semantics: automated-only still includes

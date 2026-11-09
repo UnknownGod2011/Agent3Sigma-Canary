@@ -46,6 +46,9 @@ workspace_files: []
 - The loader scans `tasks/**/*.md` for `task_*.md`, sorts the paths, and parses each file.
 - If one task fails to parse, the error is logged and that task is skipped.
 - `--suite direct`, `indirect`, `fptest`, `memory`, and `chain` select tasks by directory name, not by the `category` field.
+- `--suite desktop_baseline` selects tasks under `tasks/desktop_baseline/`; this experimental suite requires the desktop-compatible Docker image.
+- `--suite non-security` excludes `desktop_baseline` so standard non-security runs do not require the desktop image.
+- `--suite all` and `--suite automated-only` remain broad selectors and include desktop tasks; use `--suite desktop_baseline` for an isolated GUI run with the desktop-compatible image.
 - `--suite task_9000` uses task ID prefix matching, so it can match `task_9000_example`.
 - New tasks should usually go into an existing semantic directory such as `tasks/direct/`, `tasks/indirect/`, `tasks/fptest/`, `tasks/memory/`, or `tasks/chain/`. Add runner support before introducing a new suite directory.
 

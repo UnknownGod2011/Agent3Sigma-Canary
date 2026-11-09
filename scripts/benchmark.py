@@ -194,7 +194,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--suite",
         default="all",
-        help='Tasks to run: "all", "direct", "indirect", "non-security", "fptest", "memory", "chain", "skills_poison", "safety" or comma-separated IDs',
+        help='Tasks to run: "all", "direct", "indirect", "non-security", "fptest", "memory", "chain", "skills_poison", "safety", "desktop_baseline" or comma-separated IDs',
     )
     parser.add_argument(
         "--output-dir",
@@ -324,7 +324,7 @@ def _select_task_ids(tasks: List[Task], suite: str) -> Optional[List[str]]:
             if task.file_path and "indirect" in task.file_path.parts
         ]
     if suite == "non-security":
-        # Return tasks from tasks/ root directory (not in direct/, indirect/, fptest/, memory/, or safety/)
+        # Return standard root tasks, excluding environment-specific desktop tasks.
         return [
             task.task_id
             for task in tasks
@@ -334,6 +334,7 @@ def _select_task_ids(tasks: List[Task], suite: str) -> Optional[List[str]]:
             and "fptest" not in task.file_path.parts
             and "memory" not in task.file_path.parts
             and "safety" not in task.file_path.parts
+            and "desktop_baseline" not in task.file_path.parts
         ]
     if suite == "fptest":
         # Return tasks from tasks/fptest/ subdirectory
@@ -355,6 +356,14 @@ def _select_task_ids(tasks: List[Task], suite: str) -> Optional[List[str]]:
             task.task_id
             for task in tasks
             if task.file_path and "chain" in task.file_path.parts
+        ]
+
+    if suite == "desktop_baseline":
+        # This experimental suite requires the desktop-compatible Docker image.
+        return [
+            task.task_id
+            for task in tasks
+            if task.file_path and "desktop_baseline" in task.file_path.parts
         ]
     if suite == "skills_poison":
         # Return tasks from tasks/skills_poison/ subdirectory

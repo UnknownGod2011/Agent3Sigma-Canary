@@ -46,6 +46,9 @@ workspace_files: []
 - 加载器查找 `tasks/**/*.md` 中的 `task_*.md`，按路径排序后逐个解析。
 - 单个文件解析失败时会记录日志并跳过，不会停止整个加载流程。
 - `--suite direct`、`indirect`、`fptest`、`memory`、`chain` 依赖任务所在目录名筛选，而不是 `category` 字段。
+- `--suite desktop_baseline` 会选择 `tasks/desktop_baseline/` 下的任务；该实验套件需要桌面兼容 Docker 镜像。
+- `--suite non-security` 会排除 `desktop_baseline`，避免标准非安全套件依赖桌面镜像。
+- `--suite all` 和 `--suite automated-only` 仍是广义筛选器，会包含桌面任务；单独运行 GUI 基线时请使用 `--suite desktop_baseline` 并配置桌面兼容镜像。
 - `--suite task_9000` 会按任务 ID 前缀匹配，所以可以匹配 `task_9000_example`。
 - 新任务建议放入已有语义目录，例如 `tasks/direct/`、`tasks/indirect/`、`tasks/fptest/`、`tasks/memory/`、`tasks/chain/`，或者扩展脚本后再新增目录。
 

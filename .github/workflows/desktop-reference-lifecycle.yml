@@ -39,6 +39,9 @@ jobs:
       - name: Run required pre-setup regression tests
         run: uv run python workflow/images/desktop_baseline/test_required_pre_setup.py
 
+      - name: Verify desktop suite selection stays isolated
+        run: uv run python workflow/images/desktop_baseline/test_desktop_suite_selection.py
+
       - name: Run desktop evidence regression tests
         run: uv run python workflow/images/desktop_baseline/test_evidence_parser.py
 

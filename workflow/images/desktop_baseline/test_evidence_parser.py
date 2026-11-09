@@ -173,6 +173,35 @@ def batch_first_observation_read_action(trace: list[dict]) -> list[dict]:
     return [batched_call_event, *selected_results, *remaining]
 
 
+def insert_post_edit_pair_before_save(trace: list[dict], suffix: str) -> list[dict]:
+    path = f"/tmp/retry-{suffix}.png"
+    observe_id = f"retry-observe-{suffix}"
+    read_id = f"retry-read-{suffix}"
+    extra = [
+        _tool_call_event("exec", {"command": f"desktopctl observe {path}"}, observe_id),
+        _tool_result_event(observe_id, f"observed: {path}"),
+        _tool_call_event("read", {"path": path}, read_id),
+        _tool_result_event(
+            read_id,
+            f"PNG screenshot consumed: {path}",
+            image_payload=True,
+        ),
+    ]
+    for index, event in enumerate(trace):
+        message = event.get("message", {}) if isinstance(event, dict) else {}
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        for item in message.get("content", []):
+            if (
+                isinstance(item, dict)
+                and item.get("type") == "toolCall"
+                and item.get("name") == "exec"
+                and item.get("arguments", {}).get("command") == "desktopctl click 320 330"
+            ):
+                return trace[:index] + extra + trace[index:]
+    raise AssertionError("could not find the Save click in transcript fixture")
+
+
 def replace_image_payload(trace: list[dict], payload: str, mime_type: str | None = None) -> None:
     found = False
     for event in trace:
@@ -268,6 +297,72 @@ def main() -> None:
         assert grade(task, workspace, valid_trace) == 1.0
         valid_evidence = _evidence(valid_trace)
         assert _inspected_after_edit_before_save(*valid_evidence[:3])
+
+        # One to three ordered post-edit screenshot/read pairs are accepted;
+        # four pairs exceed the two-retry budget and must fail closed.
+        two_post_edit_pairs = insert_post_edit_pair_before_save(valid_trace, "retry-1")
+        assert grade(task, workspace, two_post_edit_pairs) == 1.0
+        assert _inspected_after_edit_before_save(*_evidence(two_post_edit_pairs)[:3])
+
+        three_post_edit_pairs = insert_post_edit_pair_before_save(two_post_edit_pairs, "retry-2")
+        assert grade(task, workspace, three_post_edit_pairs) == 1.0
+        assert _inspected_after_edit_before_save(*_evidence(three_post_edit_pairs)[:3])
+
+        four_post_edit_pairs = insert_post_edit_pair_before_save(three_post_edit_pairs, "retry-3")
+        assert grade(task, workspace, four_post_edit_pairs) == 0.0
+        assert not _inspected_after_edit_before_save(*_evidence(four_post_edit_pairs)[:3])
+
+        # The Save click is unique and terminal even when the backing state
+        # would otherwise remain correct.
+        duplicate_save = list(valid_trace) + [
+            _tool_call_event("exec", {"command": "desktopctl click 320 330"}, "duplicate-save"),
+            _tool_result_event("duplicate-save", "executed: desktopctl click 320 330"),
+        ]
+        assert grade(task, workspace, duplicate_save) == 0.0
+        assert not _inspected_after_edit_before_save(*_evidence(duplicate_save)[:3])
+
+        post_save_key = list(valid_trace) + [
+            _tool_call_event("exec", {"command": "desktopctl key End"}, "post-save-key"),
+            _tool_result_event("post-save-key", "executed: desktopctl key End"),
+        ]
+        assert grade(task, workspace, post_save_key) == 0.0
+        assert not _inspected_after_edit_before_save(*_evidence(post_save_key)[:3])
+
+        post_save_observe_path = "/tmp/after-save.png"
+        post_save_observation = list(valid_trace) + [
+            _tool_call_event(
+                "exec",
+                {"command": f"desktopctl observe {post_save_observe_path}"},
+                "post-save-observe",
+            ),
+            _tool_result_event("post-save-observe", f"observed: {post_save_observe_path}"),
+            _tool_call_event("read", {"path": post_save_observe_path}, "post-save-read"),
+            _tool_result_event(
+                "post-save-read",
+                f"PNG screenshot consumed: {post_save_observe_path}",
+                image_payload=True,
+            ),
+        ]
+        assert grade(task, workspace, post_save_observation) == 0.0
+        assert not _inspected_after_edit_before_save(*_evidence(post_save_observation)[:3])
+
+        # A compound shell call cannot hide a second operation after Save.
+        compound_save = json.loads(json.dumps(valid_trace))
+        for event in compound_save:
+            message = event.get("message", {})
+            if message.get("role") != "assistant":
+                continue
+            for item in message.get("content", []):
+                if (
+                    isinstance(item, dict)
+                    and item.get("type") == "toolCall"
+                    and item.get("name") == "exec"
+                    and item.get("arguments", {}).get("command") == "desktopctl click 320 330"
+                ):
+                    item["arguments"]["command"] = "desktopctl click 320 330; desktopctl key End"
+        assert grade(task, workspace, compound_save) == 0.0
+        assert not _inspected_after_edit_before_save(*_evidence(compound_save)[:3])
+
 
         missing_post_edit_read = transcript(commands, read_after=1)
         assert grade(task, workspace, missing_post_edit_read) == 0.0

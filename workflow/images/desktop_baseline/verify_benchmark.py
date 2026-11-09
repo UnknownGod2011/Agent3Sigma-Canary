@@ -93,7 +93,7 @@ def _parse_allowed_command(command: str) -> list[tuple[str, object]] | None:
     extra commands while still looking like a desktopctl invocation.
     """
     segments = _command_segments(command)
-    if not segments:
+    if len(segments) != 1:
         return None
     parsed: list[tuple[str, object]] = []
     for tokens in segments:
@@ -428,8 +428,6 @@ def _inspected_after_edit_before_save(
         parsed = _parse_allowed_command(command)
         return parsed is not None and any(operation == expected for operation, _ in parsed)
 
-    # Match the task grader: a screenshot must follow the final full-target edit.
-    # Otherwise an earlier edit could be inspected and then silently re-edited.
     type_action = max(
         (item for item in gui_actions if has_operation(item[3], "type")),
         key=lambda item: item[0],
@@ -437,29 +435,68 @@ def _inspected_after_edit_before_save(
     )
     if type_action is None:
         return False
-    # Match the task grader's conservative boundary: the screenshot must be
-    # inspected before the first click after the final edit, not merely before
-    # some later click that happens to follow an earlier Save.
-    first_post_edit_click = min(
-        (
-            item for item in gui_actions
-            if item[0] > type_action[0] and has_operation(item[3], "click")
-        ),
-        key=lambda item: item[0],
-        default=None,
-    )
-    if first_post_edit_click is None:
-        return False
-    return any(
-        type_action[0] < observation_sequence < read_sequence < first_post_edit_click[0]
-        and type_action[2] < observation_call_event_index
-        and observation_result_index < read_call_event_index
-        and read_result_index < first_post_edit_click[1]
-        and observation_path == read_path
-        for observation_sequence, observation_call_event_index, observation_result_index, observation_path in observations
-        for read_sequence, read_call_event_index, read_result_index, read_path in image_reads
-    )
 
+    # One post-edit click is the Save action. It is terminal: no GUI actions,
+    # screenshot observations, or image reads may follow it.
+    post_edit_clicks = [
+        item for item in gui_actions
+        if item[0] > type_action[0] and has_operation(item[3], "click")
+    ]
+    if len(post_edit_clicks) != 1:
+        return False
+    save_click = post_edit_clicks[0]
+
+    post_edit_observations = [
+        item for item in observations
+        if type_action[0] < item[0] < save_click[0]
+    ]
+    post_edit_reads = [
+        item for item in image_reads
+        if type_action[0] < item[0] < save_click[0]
+    ]
+
+    used_read_sequences = set()
+    pairs = []
+    for observation in post_edit_observations:
+        matches = [
+            read for read in post_edit_reads
+            if read[0] not in used_read_sequences
+            and observation[0] < read[0]
+            and observation[3] == read[3]
+            and observation[2] < read[1]
+            and read[2] < save_click[1]
+        ]
+        if not matches:
+            return False
+        read = min(matches, key=lambda item: item[0])
+        used_read_sequences.add(read[0])
+        pairs.append((observation, read))
+
+    pairs.sort(key=lambda pair: pair[0][0])
+    ordered_pairs = (
+        len(pairs) == len(post_edit_observations) == len(post_edit_reads)
+        and len(used_read_sequences) == len(post_edit_reads)
+        and all(
+            pairs[index - 1][1][0] < pairs[index][0][0]
+            for index in range(1, len(pairs))
+        )
+    )
+    bounded_pairs = 1 <= len(pairs) <= 3
+    no_gui_actions_after_save = not any(item[0] > save_click[0] for item in gui_actions)
+    no_observations_after_save = not any(item[0] > save_click[0] for item in observations)
+    no_reads_after_save = not any(item[0] > save_click[0] for item in image_reads)
+    no_action_after_last_verification = bool(pairs) and not any(
+        item[0] > pairs[-1][1][0] and item[0] < save_click[0]
+        for item in gui_actions
+    )
+    return (
+        ordered_pairs
+        and bounded_pairs
+        and no_gui_actions_after_save
+        and no_observations_after_save
+        and no_reads_after_save
+        and no_action_after_last_verification
+    )
 
 def _recompute_grade(workspace_path: str, transcript: list) -> bool:
     try:

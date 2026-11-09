@@ -464,6 +464,10 @@ def _inspected_after_edit_before_save(
             and observation[0] < read[0]
             and observation[3] == read[3]
             and observation[2] < read[1]
+            and not any(
+                action[0] > observation[0] and action[0] < read[0]
+                for action in gui_actions
+            )
             and read[2] < save_click[1]
         ]
         if not matches:

@@ -202,6 +202,38 @@ def insert_post_edit_pair_before_save(trace: list[dict], suffix: str) -> list[di
     raise AssertionError("could not find the Save click in transcript fixture")
 
 
+def insert_post_edit_action_before_read(trace: list[dict], suffix: str) -> list[dict]:
+    path = f"/tmp/stale-{suffix}.png"
+    observe_id = f"stale-observe-{suffix}"
+    action_id = f"stale-action-{suffix}"
+    read_id = f"stale-read-{suffix}"
+    extra = [
+        _tool_call_event("exec", {"command": f"desktopctl observe {path}"}, observe_id),
+        _tool_result_event(observe_id, f"observed: {path}"),
+        _tool_call_event("exec", {"command": "desktopctl key End"}, action_id),
+        _tool_result_event(action_id, "executed: desktopctl key End"),
+        _tool_call_event("read", {"path": path}, read_id),
+        _tool_result_event(
+            read_id,
+            f"PNG screenshot consumed: {path}",
+            image_payload=True,
+        ),
+    ]
+    for index, event in enumerate(trace):
+        message = event.get("message", {}) if isinstance(event, dict) else {}
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        for item in message.get("content", []):
+            if (
+                isinstance(item, dict)
+                and item.get("type") == "toolCall"
+                and item.get("name") == "exec"
+                and item.get("arguments", {}).get("command") == "desktopctl click 320 330"
+            ):
+                return trace[:index] + extra + trace[index:]
+    raise AssertionError("could not find the Save click in transcript fixture")
+
+
 def replace_image_payload(trace: list[dict], payload: str, mime_type: str | None = None) -> None:
     found = False
     for event in trace:
@@ -311,6 +343,12 @@ def main() -> None:
         four_post_edit_pairs = insert_post_edit_pair_before_save(three_post_edit_pairs, "retry-3")
         assert grade(task, workspace, four_post_edit_pairs) == 0.0
         assert not _inspected_after_edit_before_save(*_evidence(four_post_edit_pairs)[:3])
+
+        # A screenshot is stale if a GUI action occurs after capture but
+        # before its image is read, even when the final state remains correct.
+        action_before_post_edit_read = insert_post_edit_action_before_read(valid_trace, "stale")
+        assert grade(task, workspace, action_before_post_edit_read) == 0.0
+        assert not _inspected_after_edit_before_save(*_evidence(action_before_post_edit_read)[:3])
 
         # The Save click is unique and terminal even when the backing state
         # would otherwise remain correct.

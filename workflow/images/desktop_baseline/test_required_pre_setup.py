@@ -131,6 +131,22 @@ class RequiredRunCommandTests(unittest.TestCase):
             agent_command.assert_not_called()
 
 
+    def test_desktop_baseline_requires_successful_gui_startup(self) -> None:
+        from lib_tasks import TaskLoader
+
+        task_path = REPO_ROOT / "tasks" / "desktop_baseline" / "task_9000_desktop_notes_gui.md"
+        task = TaskLoader(REPO_ROOT / "tasks").load_task(task_path)
+        run_commands = [
+            step
+            for step in task.frontmatter.get("pre_setup", [])
+            if isinstance(step, dict) and step.get("type") == "run_command"
+        ]
+
+        self.assertEqual(len(run_commands), 1)
+        self.assertIs(run_commands[0].get("required"), True)
+        self.assertIn("desktopctl start", run_commands[0].get("command", ""))
+
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -48,7 +48,7 @@ workspace_files: []
 - `--suite direct`, `indirect`, `fptest`, `memory`, and `chain` select tasks by directory name, not by the `category` field.
 - `--suite desktop_baseline` selects tasks under `tasks/desktop_baseline/`; this experimental suite requires the desktop-compatible Docker image.
 - `--suite non-security` excludes `desktop_baseline` so standard non-security runs do not require the desktop image.
-- `--suite all` and `--suite automated-only` remain broad selectors and include desktop tasks; use `--suite desktop_baseline` for an isolated GUI run with the desktop-compatible image.
+- `--suite all` and `--suite automated-only` exclude `desktop_baseline` tasks; those tasks require the dedicated image and experimental artifact-handoff wrapper. Use `--suite desktop_baseline` for an isolated GUI run; direct task-ID selection remains available for adapter-level tests.
 - `--suite task_9000` uses task ID prefix matching, so it can match `task_9000_example`.
 - New tasks should usually go into an existing semantic directory such as `tasks/direct/`, `tasks/indirect/`, `tasks/fptest/`, `tasks/memory/`, or `tasks/chain/`. Add runner support before introducing a new suite directory.
 

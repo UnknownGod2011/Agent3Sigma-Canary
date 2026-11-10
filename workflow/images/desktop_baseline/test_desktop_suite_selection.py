@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression tests for the opt-in desktop suite selector."""
+"""Regression tests for keeping the experimental desktop suite opt-in."""
 from __future__ import annotations
 
 import sys
@@ -34,15 +34,13 @@ def main() -> None:
     assert benchmark._select_task_ids(tasks, "desktop_baseline") == [desktop.task_id]
     assert benchmark._select_task_ids(tasks, "non-security") == [root_task.task_id]
     assert benchmark._select_task_ids(tasks, "task_9000") == ["task_9000"]
-    assert benchmark._select_task_ids(tasks, "all") is None
 
-    # Preserve broad grading-type semantics: automated-only still includes
-    # the desktop task, so callers must choose an image compatible with all tasks.
-    assert benchmark._select_task_ids(tasks, "automated-only") == [
-        desktop.task_id,
-        root_task.task_id,
-        direct_task.task_id,
-    ]
+    # Broad suites must not silently run this task: it requires the dedicated
+    # desktop image plus the wrapper that exports its grader artifact before
+    # the normal host-side grading step.
+    expected_standard = [root_task.task_id, direct_task.task_id]
+    assert benchmark._select_task_ids(tasks, "all") == expected_standard
+    assert benchmark._select_task_ids(tasks, "automated-only") == expected_standard
 
     print("desktop suite selection tests passed (5 selector assertions)")
 

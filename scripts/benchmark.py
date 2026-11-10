@@ -194,7 +194,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--suite",
         default="all",
-        help='Tasks to run: "all", "direct", "indirect", "non-security", "fptest", "memory", "chain", "skills_poison", "safety", "desktop_baseline" or comma-separated IDs',
+        help='Tasks to run: "all" (standard tasks), "automated-only", "direct", "indirect", "non-security", "fptest", "memory", "chain", "skills_poison", "safety", "desktop_baseline" (experimental; explicit only) or comma-separated IDs',
     )
     parser.add_argument(
         "--output-dir",
@@ -306,9 +306,20 @@ def _parse_task_range(range_str: str) -> List[str]:
 
 def _select_task_ids(tasks: List[Task], suite: str) -> Optional[List[str]]:
     if suite == "all":
-        return None
+        # The desktop baseline needs its dedicated image and artifact-handoff
+        # wrapper; keep it out of the default full benchmark.
+        return [
+            task.task_id
+            for task in tasks
+            if not (task.file_path and "desktop_baseline" in task.file_path.parts)
+        ]
     if suite == "automated-only":
-        return [task.task_id for task in tasks if task.grading_type == "automated"]
+        return [
+            task.task_id
+            for task in tasks
+            if task.grading_type == "automated"
+            and not (task.file_path and "desktop_baseline" in task.file_path.parts)
+        ]
     if suite == "direct":
         # Return tasks from tasks/direct/ subdirectory
         return [

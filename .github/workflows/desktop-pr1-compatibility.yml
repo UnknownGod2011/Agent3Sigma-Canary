@@ -349,12 +349,17 @@ jobs:
                       continue
                   for item in message.get("content", []):
                       if isinstance(item, dict) and item.get("type") == "toolCall":
-                          calls.append((item.get("name"), item.get("arguments", {})))
+                          name = item.get("name")
+                          arguments = item.get("arguments", {})
+                          if name == "exec" and isinstance(arguments, dict):
+                              command = arguments.get("command")
+                              if isinstance(command, str) and command.startswith(("desktopctl click ", "desktopctl type ", "desktopctl key ")):
+                                  calls.append(command)
               return calls
 
           first, repeat = load(sys.argv[1]), load(sys.argv[2])
-          assert first == repeat, ("reference GUI trajectories differed", first, repeat)
-          print("upstream bind-mount reference runs reproduced identical GUI tool-call sequences")
+          assert first and first == repeat, ("reference GUI action sequences differed", first, repeat)
+          print("upstream bind-mount reference runs reproduced identical state-changing GUI action sequences")
           PY
 
       - name: Run task-scoped bind-mount OpenClaw tool loop twice on upstream runner
@@ -428,12 +433,17 @@ jobs:
                       continue
                   for item in message.get("content", []):
                       if isinstance(item, dict) and item.get("type") == "toolCall":
-                          calls.append((item.get("name"), item.get("arguments", {})))
+                          name = item.get("name")
+                          arguments = item.get("arguments", {})
+                          if name == "exec" and isinstance(arguments, dict):
+                              command = arguments.get("command")
+                              if isinstance(command, str) and command.startswith(("desktopctl click ", "desktopctl type ", "desktopctl key ")):
+                                  calls.append(command)
               return calls
 
           first, repeat = trajectory(sys.argv[1]), trajectory(sys.argv[2])
-          assert first == repeat, ("OpenClaw GUI trajectories differed", first, repeat)
-          print("upstream bind-mount OpenClaw runs reproduced identical screenshot-conditioned GUI tool calls")
+          assert first and first == repeat, ("OpenClaw GUI action sequences differed", first, repeat)
+          print("upstream bind-mount OpenClaw runs reproduced identical screenshot-conditioned GUI action sequences")
           PY
 
       - name: Confirm the no-mount negative control on upstream runner

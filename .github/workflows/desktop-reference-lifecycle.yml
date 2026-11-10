@@ -36,9 +36,6 @@ jobs:
       - name: Install AgentCanary Python runner
         run: python -m pip install --disable-pip-version-check uv
 
-      - name: Run required pre-setup regression tests
-        run: uv run python workflow/images/desktop_baseline/test_required_pre_setup.py
-
       - name: Verify desktop suite selection stays isolated
         run: uv run python workflow/images/desktop_baseline/test_desktop_suite_selection.py
 
@@ -183,11 +180,6 @@ jobs:
             ln -sf /usr/local/bin/agentcanary-reference-openclaw /usr/local/bin/openclaw
           docker stop "$container" >/dev/null
           docker commit "$container" agentcanary-desktop-reference >/dev/null
-
-      - name: Verify required setup failure aborts a Docker-backed run
-        env:
-          DOCKER_IMAGE: agentcanary-desktop-reference
-        run: uv run python workflow/images/desktop_baseline/test_required_setup_docker.py
 
       - name: Compare task-scoped bind-mount artifact handoff (repeat twice)
         env:

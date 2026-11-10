@@ -678,31 +678,18 @@ def _execute_run_command_setup(step: dict, workspace: Path, task_id: str) -> Non
                 in local mode); defaults to the current task agent workspace
       - env:    optional {key: value} injected into the command's environment
       - timeout: optional seconds (default 120)
-      - required: bool -> fail the task on setup failure (default false)
 
-    By default, malformed commands, non-zero exits, and timeouts are skipped to
-    preserve the best-effort pre_setup contract. Set required: true only when
-    the task cannot be evaluated meaningfully without this setup step.
+    A malformed command, non-zero exit, or timeout is silently skipped. This
+    preserves the best-effort pre_setup contract: one optional initialization
+    command must not abort the task.
     """
-    required = step.get("required") is True
-
-    def _setup_failure(message: str, *, cause: Exception | None = None) -> None:
-        if required:
-            error = RuntimeError(
-                f"run_command: task {task_id} required pre_setup command failed: {message}"
-            )
-            if cause is not None:
-                raise error from cause
-            raise error
-        logger.debug("run_command: task %s %s; skipping", task_id, message)
-
     command = step.get("command")
     if isinstance(command, str):
         args = ["sh", "-c", command]
     elif isinstance(command, list) and command:
         args = [str(x) for x in command]
     else:
-        _setup_failure("missing or invalid command")
+        logger.debug("run_command: task %s missing or invalid command; skipping", task_id)
         return
 
     cwd = str(step.get("cwd") or workspace)
@@ -727,17 +714,17 @@ def _execute_run_command_setup(step: dict, workspace: Path, task_id: str) -> Non
     if docker.is_active():
         try:
             result = docker.run_cmd(args, cwd=cwd, env=command_env, timeout=timeout)
-        except subprocess.TimeoutExpired as exc:
-            _setup_failure(f"timed out after {timeout:.0f}s", cause=exc)
+        except subprocess.TimeoutExpired:
+            logger.debug("run_command: task %s timed out after %.0fs; skipping",
+                         task_id, timeout)
             return
         if result.stdout:
             logger.info("run_command stdout: %s", result.stdout[-2000:])
         if result.stderr:
             logger.info("run_command stderr: %s", result.stderr[-2000:])
         if result.returncode not in (0, None):
-            _setup_failure(f"exited with status {result.returncode}")
-        elif required and result.returncode is None:
-            _setup_failure("did not return an exit status")
+            logger.debug("run_command: task %s exited %d; skipping",
+                         task_id, result.returncode)
         return
 
     # Local (non-Docker) mode: run on the host against the workspace.
@@ -754,15 +741,17 @@ def _execute_run_command_setup(step: dict, workspace: Path, task_id: str) -> Non
             timeout=timeout,
             check=False,
         )
-    except subprocess.TimeoutExpired as exc:
-        _setup_failure(f"timed out after {timeout:.0f}s (local)", cause=exc)
+    except subprocess.TimeoutExpired:
+        logger.debug("run_command: task %s timed out after %.0fs (local); skipping",
+                     task_id, timeout)
         return
     if result.stdout:
         logger.info("run_command stdout: %s", result.stdout[-2000:])
     if result.stderr:
         logger.info("run_command stderr: %s", result.stderr[-2000:])
-    if result.returncode != 0:
-        _setup_failure(f"exited with status {result.returncode} (local)")
+    if result.returncode not in (0,):
+        logger.debug("run_command: task %s exited %d (local); skipping",
+                     task_id, result.returncode)
 
 
 def _convert_openai_to_openclaw_jsonl(messages: list, session_id: str) -> str:

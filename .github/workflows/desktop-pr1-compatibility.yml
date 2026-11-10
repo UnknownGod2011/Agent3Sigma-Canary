@@ -73,6 +73,8 @@ jobs:
           uv run python workflow/images/desktop_baseline/test_results_dir_isolation.py
           uv run python workflow/images/desktop_baseline/test_safe_container_export.py
           uv run python workflow/images/desktop_baseline/test_workspace_copyback_cleanup.py
+          uv run python workflow/images/desktop_baseline/test_bind_mount_handoff.py
+          uv run python workflow/images/desktop_baseline/test_bind_mount_runner.py
 
       - name: Prepare the upstream builder context and build a desktop-compatible image
         shell: bash
@@ -307,6 +309,184 @@ jobs:
           done
           echo "Local-provider tool loop repeated on upstream master $UPSTREAM_MASTER_SHA; no external model provider was called."
 
+      - name: Run task-scoped bind-mount reference lifecycle twice on upstream runner
+        shell: bash
+        working-directory: \${{ runner.temp }}/upstream-master
+        run: |
+          set -euo pipefail
+          for attempt in first repeat; do
+            results_dir="$RUNNER_TEMP/upstream-bind-mount-reference-$attempt"
+            rm -rf "$results_dir"
+            DOCKER_IMAGE=agentcanary-desktop-upstream-reference uv run python \
+              workflow/images/desktop_baseline/run_bind_mount_benchmark.py \
+              --model reference/desktop \
+              --suite task_9000_desktop_notes_gui \
+              --docker \
+              --timeout-multiplier 1.0 \
+              --output-dir "$results_dir" \
+              --verbose
+            uv run python workflow/images/desktop_baseline/verify_benchmark.py "$results_dir"
+          done
+          python - "$RUNNER_TEMP/upstream-bind-mount-reference-first" "$RUNNER_TEMP/upstream-bind-mount-reference-repeat" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          task_id = "task_9000_desktop_notes_gui"
+
+          def load(root):
+              artifacts = list(Path(root).glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+              assert len(artifacts) == 1, (root, artifacts)
+              data = json.loads(artifacts[0].read_text(encoding="utf-8"))
+              assert data.get("grading", {}).get("score") == 1.0, data.get("grading")
+              assert data.get("grading", {}).get("breakdown", {}).get("desktop_baseline_valid") == 1.0, data.get("grading")
+              calls = []
+              for event in data.get("transcript", []):
+                  if not isinstance(event, dict) or event.get("type") != "message":
+                      continue
+                  message = event.get("message", {})
+                  if not isinstance(message, dict) or message.get("role") != "assistant":
+                      continue
+                  for item in message.get("content", []):
+                      if isinstance(item, dict) and item.get("type") == "toolCall":
+                          calls.append((item.get("name"), item.get("arguments", {})))
+              return calls
+
+          first, repeat = load(sys.argv[1]), load(sys.argv[2])
+          assert first == repeat, ("reference GUI trajectories differed", first, repeat)
+          print("upstream bind-mount reference runs reproduced identical GUI tool-call sequences")
+          PY
+
+      - name: Run task-scoped bind-mount OpenClaw tool loop twice on upstream runner
+        shell: bash
+        working-directory: \${{ runner.temp }}/upstream-master
+        run: |
+          set -euo pipefail
+          for attempt in first repeat; do
+            results_dir="$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-$attempt"
+            rm -rf "$results_dir"
+            DOCKER_IMAGE=agentcanary-desktop-upstream-openclaw-stub uv run python \
+              workflow/images/desktop_baseline/run_bind_mount_benchmark.py \
+              --model desktop-stub/desktop-fixture \
+              --suite task_9000_desktop_notes_gui \
+              --docker \
+              --timeout-multiplier 1.0 \
+              --output-dir "$results_dir" \
+              --verbose
+            uv run python workflow/images/desktop_baseline/verify_benchmark.py "$results_dir"
+            python - "$results_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          task_id = "task_9000_desktop_notes_gui"
+          artifacts = list(root.glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+          assert len(artifacts) == 1, artifacts
+          data = json.loads(artifacts[0].read_text(encoding="utf-8"))
+          assert data.get("grading", {}).get("score") == 1.0, data.get("grading")
+          calls, call_ids, image_reads = [], [], []
+          for event in data.get("transcript", []):
+              if not isinstance(event, dict) or event.get("type") != "message":
+                  continue
+              message = event.get("message", {})
+              if not isinstance(message, dict) or message.get("role") != "assistant":
+                  continue
+              for item in message.get("content", []):
+                  if not isinstance(item, dict) or item.get("type") != "toolCall":
+                      continue
+                  call_ids.append(str(item.get("id", "")))
+                  calls.append((item.get("name"), item.get("arguments", {})))
+                  args = item.get("arguments", {})
+                  if isinstance(args, dict) and item.get("name") == "read":
+                      path = args.get("path")
+                      if isinstance(path, str) and path.endswith(".png"):
+                          image_reads.append(path)
+          assert sum(name == "exec" for name, _ in calls) >= 5, calls
+          assert any(name == "read" for name, _ in calls) and image_reads, (calls, image_reads)
+          assert call_ids and not any(value.startswith("desktop-reference-") for value in call_ids), call_ids
+          print("upstream bind-mount OpenClaw run verified: screenshot read, GUI tool calls, and 1.0 grade")
+          PY
+          done
+          python - "$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-first" "$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-repeat" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          task_id = "task_9000_desktop_notes_gui"
+
+          def trajectory(root):
+              artifacts = list(Path(root).glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+              assert len(artifacts) == 1, (root, artifacts)
+              data = json.loads(artifacts[0].read_text(encoding="utf-8"))
+              calls = []
+              for event in data.get("transcript", []):
+                  if not isinstance(event, dict) or event.get("type") != "message":
+                      continue
+                  message = event.get("message", {})
+                  if not isinstance(message, dict) or message.get("role") != "assistant":
+                      continue
+                  for item in message.get("content", []):
+                      if isinstance(item, dict) and item.get("type") == "toolCall":
+                          calls.append((item.get("name"), item.get("arguments", {})))
+              return calls
+
+          first, repeat = trajectory(sys.argv[1]), trajectory(sys.argv[2])
+          assert first == repeat, ("OpenClaw GUI trajectories differed", first, repeat)
+          print("upstream bind-mount OpenClaw runs reproduced identical screenshot-conditioned GUI tool calls")
+          PY
+
+      - name: Confirm the no-mount negative control on upstream runner
+        shell: bash
+        working-directory: \${{ runner.temp }}/upstream-master
+        run: |
+          set -euo pipefail
+          results_dir="$RUNNER_TEMP/upstream-no-bind-mount-negative-control"
+          rm -rf "$results_dir"
+          DOCKER_IMAGE=agentcanary-desktop-upstream-reference uv run python \
+            workflow/images/desktop_baseline/run_bind_mount_benchmark.py \
+            --no-artifact-mount \
+            --no-artifact-copyback \
+            --assert-container-state-before-stop \
+            --model reference/desktop \
+            --suite task_9000_desktop_notes_gui \
+            --docker \
+            --timeout-multiplier 1.0 \
+            --output-dir "$results_dir" \
+            --verbose
+          python - "$results_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          task_id = "task_9000_desktop_notes_gui"
+          artifacts = list(root.glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+          assert len(artifacts) == 1, artifacts
+          data = json.loads(artifacts[0].read_text(encoding="utf-8"))
+          grading = data.get("grading", {})
+          assert data.get("task_id") == task_id, data.get("task_id")
+          assert grading.get("max_score") == 1.0 and grading.get("score") == 0.0, grading
+          assert grading.get("breakdown", {}).get("desktop_baseline_valid") == 0.0, grading
+          calls = []
+          for event in data.get("transcript", []):
+              if not isinstance(event, dict) or event.get("type") != "message":
+                  continue
+              message = event.get("message", {})
+              if not isinstance(message, dict) or message.get("role") != "assistant":
+                  continue
+              for item in message.get("content", []):
+                  if isinstance(item, dict) and item.get("type") == "toolCall":
+                      calls.append((item.get("name"), item.get("arguments", {})))
+          assert any(name == "read" for name, _ in calls), calls
+          assert any(
+              name == "exec" and isinstance(args, dict)
+              and str(args.get("command", "")).startswith("desktopctl click ")
+              for name, args in calls
+          ), calls
+          print("upstream no-mount control confirmed: GUI trajectory completed in Docker, host grading scored 0.0")
+          PY
+
       - name: Preserve compatibility run evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -318,5 +498,10 @@ jobs:
             ${{ runner.temp }}/upstream-negative-control/**
             ${{ runner.temp }}/upstream-openclaw-stub-first/**
             ${{ runner.temp }}/upstream-openclaw-stub-repeat/**
+            ${{ runner.temp }}/upstream-bind-mount-reference-first/**
+            ${{ runner.temp }}/upstream-bind-mount-reference-repeat/**
+            ${{ runner.temp }}/upstream-bind-mount-openclaw-stub-first/**
+            ${{ runner.temp }}/upstream-bind-mount-openclaw-stub-repeat/**
+            ${{ runner.temp }}/upstream-no-bind-mount-negative-control/**
           if-no-files-found: warn
           retention-days: 7

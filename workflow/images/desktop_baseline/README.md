@@ -69,9 +69,12 @@ workspace before the existing `grade_task` call.
 
 The comparison covers two repeated OCR-reference runs and two repeated native
 OpenClaw CLI runs against the deterministic local provider, all using the bind
-mount. Each positive run scored 1.0/1.0; each repeated pair produced identical
-final state and GUI-action sequence hashes. The evidence manifest retains each
-raw tool-sequence hash and records observation/retry counts; those counts may
+mount. Each positive run scored 1.0/1.0. For each repeated pair, CI compares the
+raw final-state bytes, ordered state-changing GUI-action sequence, and captured
+screenshot payloads by SHA-256. It writes a machine-readable
+`desktop_reproducibility_manifest.json` into the first run's retained artifact;
+the manifest records the upstream commit, per-run hashes, action/observation/
+read counts, and bounded verification retries. Observation/retry counts may
 differ by up to two bounded re-observations while the Tk event loop processes
 typed input. The no-mount and no-copyback controls recorded the GUI tool
 trajectory but scored 0.0/1.0 because the host grader could not see the state

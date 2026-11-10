@@ -311,7 +311,7 @@ jobs:
 
       - name: Run task-scoped bind-mount reference lifecycle twice on upstream runner
         shell: bash
-        working-directory: \${{ runner.temp }}/upstream-master
+        working-directory: ${{ runner.temp }}/upstream-master
         run: |
           set -euo pipefail
           for attempt in first repeat; do
@@ -359,7 +359,7 @@ jobs:
 
       - name: Run task-scoped bind-mount OpenClaw tool loop twice on upstream runner
         shell: bash
-        working-directory: \${{ runner.temp }}/upstream-master
+        working-directory: ${{ runner.temp }}/upstream-master
         run: |
           set -euo pipefail
           for attempt in first repeat; do
@@ -438,7 +438,7 @@ jobs:
 
       - name: Confirm the no-mount negative control on upstream runner
         shell: bash
-        working-directory: \${{ runner.temp }}/upstream-master
+        working-directory: ${{ runner.temp }}/upstream-master
         run: |
           set -euo pipefail
           results_dir="$RUNNER_TEMP/upstream-no-bind-mount-negative-control"

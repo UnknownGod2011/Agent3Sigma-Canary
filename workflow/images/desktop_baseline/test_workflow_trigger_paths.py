@@ -87,6 +87,14 @@ def main() -> None:
     ):
         assert required in native_step, f"native OpenClaw bind-mount experiment missing: {required}"
     print("native OpenClaw bind-mount experiment is part of the desktop lifecycle gate")
+    compatibility_path = ROOT / ".github" / "workflows" / "desktop-pr1-compatibility.yml"
+    compatibility_source = compatibility_path.read_text(encoding="utf-8")
+    assert 'git -C "$RUNNER_TEMP/upstream-master" fetch --depth=1 origin refs/heads/master' in compatibility_source, (
+        "desktop compatibility must fetch the current upstream master, not a historical PR ref"
+    )
+    assert "UPSTREAM_MASTER_SHA" in compatibility_source, "compatibility evidence must record the tested upstream master SHA"
+    assert "refs/pull/1/head" not in compatibility_source, "compatibility must not remain pinned to PR #1"
+    print("desktop compatibility workflow tracks current upstream master")
     print("desktop CI trigger dependency checks passed")
 
 

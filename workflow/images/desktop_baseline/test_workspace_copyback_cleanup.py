@@ -47,12 +47,25 @@ class SafeArtifactExportCleanupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace=Path(tmp); target=workspace/runner.STATE_ARTIFACT_NAME
             target.write_text('{"saved":false}',encoding="utf-8")
-            expected=b'{"saved":true,"text":"AgentCanary desktop baseline complete","current_text":"AgentCanary desktop baseline complete"}'
+            expected=b'{"current_text":"AgentCanary desktop baseline complete","save_count":1,"saved":true,"text":"AgentCanary desktop baseline complete"}'
             with (patch.object(runner.safe_export,"read_state_artifact",return_value=expected),
                   patch.object(runner.subprocess,"run",side_effect=AssertionError("unexpected subprocess"))):
                 copied=runner._copy_grader_state_artifact_to_host("container-id",workspace)
             self.assertTrue(copied)
             self.assertEqual(target.read_bytes(),expected)
+
+    def test_pre_teardown_state_requires_exactly_one_save_callback(self):
+        payload = (
+            b'{"current_text":"AgentCanary desktop baseline complete",'
+            b'"save_count":2,"saved":true,'
+            b'"text":"AgentCanary desktop baseline complete"}'
+        )
+        with (
+            patch.object(runner.docker, "get_container_id", return_value="container-id"),
+            patch.object(runner.safe_export, "read_state_artifact", return_value=payload),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "unexpected in-container task state"):
+                runner._assert_container_state_before_teardown()
 
     def test_missing_state_removes_untrusted_host_artifact(self):
         with tempfile.TemporaryDirectory() as tmp:

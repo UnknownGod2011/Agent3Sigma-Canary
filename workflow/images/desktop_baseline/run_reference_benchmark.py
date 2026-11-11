@@ -168,7 +168,13 @@ def _assert_container_state_before_teardown() -> None:
     except (UnicodeDecodeError, ValueError) as exc:
         raise RuntimeError(f"could not parse in-container desktop state: {exc}") from exc
     target = "AgentCanary desktop baseline complete"
-    if state.get("saved") is not True or state.get("text") != target or state.get("current_text") != target:
+    if (
+        type(state.get("save_count")) is not int
+        or state.get("save_count") != 1
+        or state.get("saved") is not True
+        or state.get("text") != target
+        or state.get("current_text") != target
+    ):
         raise RuntimeError(f"unexpected in-container task state: {state!r}")
 
     probe = r"""

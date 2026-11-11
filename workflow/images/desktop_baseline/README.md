@@ -22,9 +22,11 @@ This is a desktop-integration feasibility fixture, not a security boundary. The 
 Do not interpret the state path as confidential or use this setup for security-robustness claims. Before adversarial desktop/security experiments, establish a genuine agent–GUI isolation boundary or explicitly redesign the trust model.
 
 The target text defaults to `AgentCanary desktop baseline complete`. The app
-starts with a different value and writes `saved: false`; only the GUI Save
-button changes the saved text and sets `saved: true`. Keyboard events also
-update `current_text`, allowing the grader to reject a later unsaved edit.
+starts with a different value and writes `saved: false`; every actual GUI Save
+callback increments `save_count`, and both the grader and reference runner
+require exactly one callback. Keyboard events also update `current_text`,
+allowing the grader to reject a later unsaved edit or a premature save followed
+by a correct final save.
 
 ## Screenshot-grounded reference controller
 

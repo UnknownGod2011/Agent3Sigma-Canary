@@ -19,7 +19,7 @@ class BindMountRunnerTests(unittest.TestCase):
         events: list[str] = []
         workspace_root = Path(tempfile.mkdtemp(prefix="agentcanary-bindmount-test-"))
         workspace = workspace_root / "agent_workspace"
-        payload = b'{"current_text":"ok","saved":true,"text":"ok"}'
+        payload = b'{"current_text":"ok","save_count":1,"saved":true,"text":"ok"}'
         mounts_seen = []
 
         original_docker_start = baseline.docker.start

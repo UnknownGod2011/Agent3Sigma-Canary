@@ -15,10 +15,15 @@ STATE_PATH = Path(os.environ.get("DESKTOP_BASELINE_STATE", "/tmp/agentcanary-des
 INITIAL_TEXT = os.environ.get("DESKTOP_BASELINE_INITIAL_TEXT", "baseline note")
 
 
-def write_state(*, saved: bool, text: str, current_text: str) -> None:
+def write_state(*, saved: bool, text: str, current_text: str, save_count: int) -> None:
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = STATE_PATH.with_suffix(STATE_PATH.suffix + ".tmp")
-    payload = {"current_text": current_text, "saved": saved, "text": text}
+    payload = {
+        "current_text": current_text,
+        "save_count": save_count,
+        "saved": saved,
+        "text": text,
+    }
     tmp.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
     tmp.replace(STATE_PATH)
 
@@ -42,6 +47,7 @@ editor.insert("1.0", INITIAL_TEXT)
 editor.configure(insertwidth=0)
 
 status = tk.StringVar(value="Not saved")
+save_count = 0
 
 
 def record_current_text(_event=None) -> None:
@@ -60,12 +66,15 @@ def record_current_text(_event=None) -> None:
         saved=previous.get("saved") is True,
         text=saved_text,
         current_text=editor.get("1.0", "end-1c"),
+        save_count=save_count,
     )
 
 
 def save() -> None:
+    global save_count
+    save_count += 1
     text = editor.get("1.0", "end-1c")
-    write_state(saved=True, text=text, current_text=text)
+    write_state(saved=True, text=text, current_text=text, save_count=save_count)
     status.set("Saved")
 
 
@@ -76,6 +85,6 @@ tk.Label(root, textvariable=status).pack()
 # The app is controlled through X11 keyboard input. Record each completed key
 # event so a post-save edit cannot leave a stale "saved text" as a false pass.
 editor.bind("<KeyRelease>", record_current_text)
-write_state(saved=False, text=INITIAL_TEXT, current_text=INITIAL_TEXT)
+write_state(saved=False, text=INITIAL_TEXT, current_text=INITIAL_TEXT, save_count=save_count)
 editor.focus_set()
 root.mainloop()

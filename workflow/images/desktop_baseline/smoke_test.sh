@@ -33,7 +33,7 @@ python3 - "$STATE" <<'PY'
 import json, sys
 from pathlib import Path
 state = json.loads(Path(sys.argv[1]).read_text())
-assert state == {"saved": False, "text": "baseline note", "current_text": "baseline note"}, state
+assert state == {"saved": False, "text": "baseline note", "current_text": "baseline note", "save_count": 0}, state
 PY
 
 # Establish Tk widget focus through a real pointer action. Use canonical X11
@@ -99,7 +99,7 @@ try:
     state = json.loads(Path(sys.argv[1]).read_text())
 except (OSError, ValueError):
     raise SystemExit(1)
-raise SystemExit(0 if state == {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2]} else 1)
+raise SystemExit(0 if state == {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2], "save_count": 1} else 1)
 PY
   then
     break
@@ -111,7 +111,7 @@ python3 - "$STATE" "$TARGET" <<'PY'
 import json, sys
 from pathlib import Path
 state = json.loads(Path(sys.argv[1]).read_text())
-expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2]}
+expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2], "save_count": 1}
 assert state == expected, (state, expected)
 PY
 
@@ -128,7 +128,7 @@ try:
     state = json.loads(Path(sys.argv[1]).read_text())
 except (OSError, ValueError):
     raise SystemExit(1)
-expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2][:-1]}
+expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2][:-1], "save_count": 1}
 raise SystemExit(0 if state == expected else 1)
 PY
   then
@@ -140,7 +140,7 @@ python3 - "$STATE" "$TARGET" <<'PY'
 import json, sys
 from pathlib import Path
 state = json.loads(Path(sys.argv[1]).read_text())
-expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2][:-1]}
+expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2][:-1], "save_count": 1}
 assert state == expected, (state, expected)
 PY
 
@@ -153,7 +153,7 @@ try:
     state = json.loads(Path(sys.argv[1]).read_text())
 except (OSError, ValueError):
     raise SystemExit(1)
-expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2]}
+expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2], "save_count": 1}
 raise SystemExit(0 if state == expected else 1)
 PY
   then
@@ -165,7 +165,33 @@ python3 - "$STATE" "$TARGET" <<'PY'
 import json, sys
 from pathlib import Path
 state = json.loads(Path(sys.argv[1]).read_text())
-expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2]}
+expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2], "save_count": 1}
+assert state == expected, (state, expected)
+PY
+
+# A second actual Save callback must increment the counter rather than being
+# hidden by the already-correct saved/current text.
+desktopctl click 320 330
+for _ in $(seq 1 30); do
+  if python3 - "$STATE" <<'PY'
+import json, sys
+from pathlib import Path
+try:
+    state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+except (OSError, ValueError):
+    raise SystemExit(1)
+raise SystemExit(0 if state.get("save_count") == 2 else 1)
+PY
+  then
+    break
+  fi
+  sleep 0.1
+done
+python3 - "$STATE" "$TARGET" <<'PY'
+import json, sys
+from pathlib import Path
+state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+expected = {"saved": True, "text": sys.argv[2], "current_text": sys.argv[2], "save_count": 2}
 assert state == expected, (state, expected)
 PY
 

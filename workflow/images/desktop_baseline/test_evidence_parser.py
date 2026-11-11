@@ -321,13 +321,57 @@ def main() -> None:
         workspace = Path(tmp)
         state_path = workspace / "desktop_baseline_state.json"
         state_path.write_text(
-            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET}),
+            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET, "save_count": 1}),
             encoding="utf-8",
         )
 
         valid_trace = transcript(commands)
         assert grade(task, workspace, valid_trace) == 1.0
         valid_evidence = _evidence(valid_trace)
+
+        # Legacy or malformed callback counters must fail closed even when the
+        # saved/current text and transcript otherwise satisfy the task.
+        state_path.write_text(
+            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET}),
+            encoding="utf-8",
+        )
+        assert grade(task, workspace, valid_trace) == 0.0
+        state_path.write_text(
+            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET, "save_count": True}),
+            encoding="utf-8",
+        )
+        assert grade(task, workspace, valid_trace) == 0.0
+        state_path.write_text(
+            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET, "save_count": 1}),
+            encoding="utf-8",
+        )
+        assert grade(task, workspace, valid_trace) == 1.0
+
+        # A premature Save followed by the correct final Save used to satisfy
+        # the transcript predicate. The fixture's callback counter must reject it.
+        premature_save_commands = (
+            "desktopctl observe /tmp/before.png",
+            "desktopctl click 320 330",
+            "desktopctl click 320 180",
+            "desktopctl key Home",
+            "desktopctl key shift+End",
+            f"desktopctl type '{TARGET}'",
+            "desktopctl observe /tmp/before.png",
+            "desktopctl click 320 330",
+        )
+        premature_save_trace = transcript(premature_save_commands, read_after=(1, 7))
+        premature_evidence = _evidence(premature_save_trace)
+        assert _inspected_before_action(*premature_evidence[:3])
+        assert _inspected_after_edit_before_save(*premature_evidence[:3])
+        state_path.write_text(
+            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET, "save_count": 2}),
+            encoding="utf-8",
+        )
+        assert grade(task, workspace, premature_save_trace) == 0.0
+        state_path.write_text(
+            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET, "save_count": 1}),
+            encoding="utf-8",
+        )
         assert _inspected_after_edit_before_save(*valid_evidence[:3])
 
         # One to three ordered post-edit screenshot/read pairs are accepted;
@@ -455,12 +499,12 @@ def main() -> None:
             "desktopctl key BackSpace",
         ))
         state_path.write_text(
-            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET[:-1]}),
+            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET[:-1], "save_count": 1}),
             encoding="utf-8",
         )
         assert grade(task, workspace, post_save_edit) == 0.0
         state_path.write_text(
-            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET}),
+            json.dumps({"saved": True, "text": TARGET, "current_text": TARGET, "save_count": 1}),
             encoding="utf-8",
         )
 

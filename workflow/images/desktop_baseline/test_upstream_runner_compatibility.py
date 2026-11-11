@@ -55,6 +55,25 @@ def characterize_suite_selection(task) -> None:
     assert task in benchmark._select_tasks(tasks, "non-security")
 
 
+
+def characterize_directory_suite_cli() -> None:
+    # Exercise the actual upstream CLI path, not only its private selector.
+    # Directory suites load only that subtree in main(), then validate the
+    # loaded tasks before any model or Docker execution.
+    original_argv = sys.argv[:]
+    try:
+        for suite in ("desktop_baseline/", "tasks/desktop_baseline/"):
+            sys.argv = [
+                "benchmark.py",
+                "--suite",
+                suite,
+                "--validate-tasks",
+            ]
+            benchmark.main()
+    finally:
+        sys.argv = original_argv
+
+
 def characterize_toolset_validation(task) -> None:
     # The current task has no declared toolset, so upstream accepts it even
     # when the selected image is an ordinary non-desktop OpenClaw image.
@@ -99,11 +118,12 @@ def characterize_pre_setup_failure_semantics(task) -> None:
 def main() -> None:
     task = load_desktop_task()
     characterize_suite_selection(task)
+    characterize_directory_suite_cli()
     characterize_toolset_validation(task)
     characterize_pre_setup_failure_semantics(task)
     print(
-        "upstream desktop characterization passed: explicit directory selection "
-        "works; broad suites include the desktop task; desktop toolset validation "
+        "upstream desktop characterization passed: CLI directory validation works; "
+        "broad suites include the desktop task; desktop toolset validation "
         "is unsupported; run_command setup failures remain best-effort"
     )
 

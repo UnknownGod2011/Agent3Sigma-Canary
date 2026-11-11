@@ -96,6 +96,88 @@ def characterize_toolset_validation(task) -> None:
         raise AssertionError("upstream unexpectedly accepted required_toolset: desktop")
 
 
+
+def characterize_desktop_toolset_cli_rejection() -> None:
+    # Exercise the upstream CLI with a task that explicitly requires the
+    # desktop image marker. The current upstream validator must reject this
+    # before any agent invocation or Docker container startup.
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="agentcanary-desktop-toolset-") as tmp:
+        root = Path(tmp)
+        scripts_dir = root / "scripts"
+        tasks_dir = root / "tasks" / "desktop_baseline"
+        scripts_dir.mkdir()
+        tasks_dir.mkdir(parents=True)
+        fake_script = scripts_dir / "benchmark.py"
+        fake_script.touch()
+        task_path = tasks_dir / "task_desktop_toolset_probe.md"
+        task_path.write_text(
+            """---
+id: task_desktop_toolset_probe
+name: "Desktop toolset validation probe"
+category: desktop_baseline
+grading_type: automated
+timeout_seconds: 30
+required_toolset: desktop
+workspace_files: []
+---
+
+## Prompt
+
+Probe desktop image validation.
+
+## Expected Behavior
+
+The runner should reject an unsupported desktop toolset before execution.
+
+## Grading Criteria
+
+- [ ] The desktop toolset is validated before agent execution
+
+## Automated Checks
+
+\x60\x60\x60python
+def grade(transcript, workspace_path):
+    return {"desktop_toolset_probe": 1.0}
+\x60\x60\x60
+""",
+            encoding="utf-8",
+        )
+
+        original_file = benchmark.__file__
+        original_argv = sys.argv[:]
+        try:
+            benchmark.__file__ = str(fake_script)
+            sys.argv = [
+                "benchmark.py",
+                "--suite",
+                "desktop_baseline/",
+                "--validate-tasks",
+                "--docker",
+            ]
+            with (
+                patch.object(benchmark.docker, "DOCKER_IMAGE", "openclaw-official"),
+                patch.object(benchmark.docker, "configure_egress_lockdown"),
+                patch.object(benchmark.docker, "start") as docker_start,
+                patch.object(benchmark, "ensure_agent_exists") as ensure_agent,
+                patch.object(benchmark, "execute_openclaw_task") as execute_task,
+            ):
+                try:
+                    benchmark.main()
+                except SystemExit as exc:
+                    assert exc.code == 2, f"expected CLI validation exit 2, got {exc.code!r}"
+                else:
+                    raise AssertionError("upstream CLI unexpectedly accepted required_toolset: desktop")
+
+                docker_start.assert_not_called()
+                ensure_agent.assert_not_called()
+                execute_task.assert_not_called()
+        finally:
+            benchmark.__file__ = original_file
+            sys.argv = original_argv
+
+
 def characterize_pre_setup_failure_semantics(task) -> None:
     # run_command is deliberately best-effort in upstream. A failed Xvfb/Tk
     # launch is logged and skipped rather than aborting before the model call.
@@ -120,11 +202,12 @@ def main() -> None:
     characterize_suite_selection(task)
     characterize_directory_suite_cli()
     characterize_toolset_validation(task)
+    characterize_desktop_toolset_cli_rejection()
     characterize_pre_setup_failure_semantics(task)
     print(
         "upstream desktop characterization passed: CLI directory validation works; "
         "broad suites include the desktop task; desktop toolset validation "
-        "is unsupported; run_command setup failures remain best-effort"
+        "is rejected before execution; run_command setup failures remain best-effort"
     )
 
 

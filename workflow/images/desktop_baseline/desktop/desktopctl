@@ -113,8 +113,9 @@ case "${1:-}" in
     shift
     # Throttle key delivery and let Tk process the queued key-release
     # events before a subsequent Save click can overtake them.
-    xdotool type --delay 25 --clearmodifiers -- "$*"
-    sleep 0.5
+    xdotool type --delay 50 --clearmodifiers -- "$*"
+    # Let Tk process the slower key-release stream before the next screenshot.
+    sleep 1.0
     ;;
   key)
     [[ $# -eq 2 ]] || usage

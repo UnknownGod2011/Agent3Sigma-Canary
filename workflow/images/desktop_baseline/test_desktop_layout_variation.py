@@ -45,6 +45,21 @@ run("desktopctl", "click", str(editor[0]), str(editor[1]))
 run("desktopctl", "key", "Home")
 run("desktopctl", "key", "shift+End")
 run("desktopctl", "type", target)
+
+# Wait for the GUI's KeyRelease callback to publish the final editor contents
+# before taking the screenshot used for coordinate verification.
+deadline = time.monotonic() + 5
+state = None
+while time.monotonic() < deadline:
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        time.sleep(0.1)
+        continue
+    if state.get("current_text") == target:
+        break
+    time.sleep(0.1)
+assert state and state.get("current_text") == target, state
 run("desktopctl", "observe", str(after_path))
 save = locate_save_button(after_path)
 run("desktopctl", "click", str(save[0]), str(save[1]))

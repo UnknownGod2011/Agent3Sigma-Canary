@@ -45,10 +45,34 @@ desktopctl key Home
 desktopctl key shift+End
 desktopctl type "$TARGET"
 
+# Wait for the Tk KeyRelease callbacks to record the GUI's current editor text.
+# This is test-harness synchronization only; the agent never reads this file.
+for _ in $(seq 1 50); do
+  if python3 - "$STATE" "$TARGET" <<'PY'
+import json, sys
+from pathlib import Path
+try:
+    state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+except (OSError, ValueError):
+    raise SystemExit(1)
+raise SystemExit(0 if state.get("current_text") == sys.argv[2] else 1)
+PY
+  then
+    break
+  fi
+  sleep 0.1
+done
+python3 - "$STATE" "$TARGET" <<'PY'
+import json, sys
+from pathlib import Path
+state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert state.get("current_text") == sys.argv[2], state
+PY
+
 # Reuse the exact same screenshot path after the visible editor changes. The
 # requested path must contain the fresh image, not a scrot-generated sibling.
 fresh_screenshot=false
-for _ in $(seq 1 3); do
+for _ in $(seq 1 10); do
   desktopctl observe "$REUSED" >/dev/null
   current_sha="$(sha256sum "$REUSED" | awk '{print $1}')"
   if [[ "$current_sha" != "$INITIAL_REUSED_SHA" ]] && screenshot_has_target "$REUSED" "$TARGET"; then

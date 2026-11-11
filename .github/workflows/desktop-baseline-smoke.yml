@@ -133,6 +133,7 @@ jobs:
                   "saved": True,
                   "text": "AgentCanary desktop baseline complete",
                   "current_text": "AgentCanary desktop baseline complete",
+                  "save_count": 1,
               }))
 
               commands = (
@@ -223,7 +224,7 @@ jobs:
               )
               assert bypass.score == 0.0, bypass
 
-              state.write_text(json.dumps({"saved": False, "text": "baseline note", "current_text": "baseline note"}))
+              state.write_text(json.dumps({"saved": False, "text": "baseline note", "current_text": "baseline note", "save_count": 0}))
               incomplete = grade_task(
                   task=task,
                   execution_result={
@@ -321,7 +322,7 @@ jobs:
           workspace = Path(sys.argv[1]).parent / "workspace"
           workspace.mkdir(parents=True, exist_ok=True)
           (workspace / "desktop_baseline_state.json").write_text(
-              json.dumps({"saved": True, "text": target, "current_text": target}),
+              json.dumps({"saved": True, "text": target, "current_text": target, "save_count": 1}),
               encoding="utf-8",
           )
           transcript = []
@@ -498,7 +499,7 @@ jobs:
                   "import pathlib; print(pathlib.Path('/tmp/agentcanary-desktop/desktop_baseline_state.json').read_text())",
               )
               state = json.loads(state_result.stdout)
-              assert state == {"saved": True, "text": target, "current_text": target}, state
+              assert state == {"saved": True, "text": target, "current_text": target, "save_count": 1}, state
               run("test", "!", "-e", "/workspace/desktop_baseline_state.json")
 
               screenshot = run(

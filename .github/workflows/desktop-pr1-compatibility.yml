@@ -76,6 +76,7 @@ jobs:
           uv run python workflow/images/desktop_baseline/test_bind_mount_handoff.py
           uv run python workflow/images/desktop_baseline/test_bind_mount_runner.py
           uv run python workflow/images/desktop_baseline/test_compare_repeated_runs.py
+          uv run python workflow/images/desktop_baseline/test_upstream_runner_compatibility.py
 
       - name: Prepare the upstream builder context and build a desktop-compatible image
         shell: bash

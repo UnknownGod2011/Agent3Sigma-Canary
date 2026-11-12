@@ -75,7 +75,11 @@ while time.monotonic() < deadline:
     if state.get("saved") is True:
         break
     time.sleep(0.1)
-assert state == {"current_text": target, "saved": True, "text": target}, state
+assert (
+    isinstance(state, dict)
+    and type(state.get("save_count")) is int
+    and state == {"current_text": target, "save_count": 1, "saved": True, "text": target}
+), state
 print(json.dumps({"editor": editor, "save": save, "state": state}, sort_keys=True))
 '''
 

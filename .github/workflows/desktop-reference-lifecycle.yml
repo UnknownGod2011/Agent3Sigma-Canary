@@ -770,7 +770,11 @@ jobs:
               assert state_path.is_file() and not state_path.is_symlink(), (label, state_path)
               state_bytes = state_path.read_bytes()
               state = json.loads(state_bytes)
-              assert state == {"current_text": target, "saved": True, "text": target}, (label, state)
+              assert (
+                  isinstance(state, dict)
+                  and type(state.get("save_count")) is int
+                  and state == {"current_text": target, "save_count": 1, "saved": True, "text": target}
+              ), (label, state)
               expected_state_paths.add(state_path)
               validated_states.append((label, result_path, result_bytes, state_path, state_bytes, action_digest, observation_count, tool_digest))
 

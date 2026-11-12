@@ -60,10 +60,15 @@ def _single_result(root: Path) -> dict[str, Any]:
     state = json.loads(state_bytes.decode("utf-8"))
     expected_state = {
         "current_text": TARGET_TEXT,
+        "save_count": 1,
         "saved": True,
         "text": TARGET_TEXT,
     }
-    if state != expected_state:
+    if (
+        not isinstance(state, dict)
+        or type(state.get("save_count")) is not int
+        or state != expected_state
+    ):
         raise ValueError(f"unexpected final GUI state: {state!r}")
 
     transcript = data.get("transcript")

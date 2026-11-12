@@ -74,7 +74,7 @@ def _write_run(root: Path, *, save_x: int = 359, image_marker: int = 0) -> None:
     shutil.rmtree(root / "job_test", ignore_errors=True)
     workspace = root / "workspace"
     workspace.mkdir(parents=True)
-    state = {"current_text": TARGET, "saved": True, "text": TARGET}
+    state = {"current_text": TARGET, "save_count": 1, "saved": True, "text": TARGET}
     (workspace / "desktop_baseline_state.json").write_text(
         json.dumps(state, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -149,6 +149,22 @@ class CompareRepeatedRunsTests(unittest.TestCase):
             compare_runs(
                 self.first, self.repeat, mode="reference", upstream_sha="abc123"
             )
+
+    def test_invalid_save_count_fails(self) -> None:
+        state_path = self.repeat / "workspace" / "desktop_baseline_state.json"
+        for invalid_count in (2, True, None):
+            with self.subTest(save_count=invalid_count):
+                state = {
+                    "current_text": TARGET,
+                    "save_count": invalid_count,
+                    "saved": True,
+                    "text": TARGET,
+                }
+                state_path.write_text(json.dumps(state) + "\\n", encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "unexpected final GUI state"):
+                    compare_runs(
+                        self.first, self.repeat, mode="reference", upstream_sha="abc123"
+                    )
 
     def test_incomplete_grade_fails(self) -> None:
         result = next(

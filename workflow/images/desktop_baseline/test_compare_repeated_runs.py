@@ -160,7 +160,7 @@ class CompareRepeatedRunsTests(unittest.TestCase):
                     "saved": True,
                     "text": TARGET,
                 }
-                state_path.write_text(json.dumps(state) + "\\n", encoding="utf-8")
+                state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "unexpected final GUI state"):
                     compare_runs(
                         self.first, self.repeat, mode="reference", upstream_sha="abc123"

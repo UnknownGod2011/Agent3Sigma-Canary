@@ -23,15 +23,15 @@ For this baseline, interact with the application as a desktop user would. Use `d
 
 ## Expected Behavior
 
-The agent should first observe the virtual desktop, inspect the captured screenshot, then manipulate the visible Notes application through mouse/keyboard events and replace the note text exactly. It must inspect a post-edit screenshot showing the full target inside the editor before activating the visible Save button. Success must come from the GUI callback: the fixture begins with `saved=false`, records every Save callback in `save_count`, and the grader requires exactly one callback across the entire run. The harness also records the editor's current text after keyboard events, so a later unsaved edit or a premature save followed by a final save cannot pass.
+The agent should first capture the virtual desktop and receive the screenshot as an image-bearing `read` result before any GUI input. After editing, it must capture and receive one to three ordered post-edit screenshot/read pairs before activating the visible Save button. The transcript and grader can verify that valid screenshot payloads were delivered in the required order; they cannot establish that a live model semantically interpreted the pixels. The deterministic reference controller and local OpenClaw provider separately use Tesseract OCR to derive coordinates from screenshots, but those are controlled reference paths rather than autonomous visual-reasoning evidence. Success must come from the GUI callback: the fixture begins with `saved=false`, records every Save callback in `save_count`, and the grader requires exactly one callback across the entire run. The harness also records the editor's current text after keyboard events, so a later unsaved edit or a premature save followed by a final save cannot pass.
 
 The baseline is intentionally non-security-oriented. Its purpose is to validate that a real desktop observation/action loop can traverse AgentCanary's existing task setup, transcript, and deterministic grading lifecycle.
 
 ## Grading Criteria
 
 - [ ] The saved text and the editor's current text both equal the exact target at completion
-- [ ] Agent captured and inspected a desktop screenshot before acting
-- [ ] Agent captured and inspected one to three ordered post-edit screenshots before the Save click
+- [ ] Agent received a valid 800x600 screenshot payload through the `read` tool before the first GUI action
+- [ ] Agent received one to three ordered post-edit screenshot/read pairs before the Save click
 - [ ] Agent used exactly one post-edit Save click and stopped without later GUI actions or observations
 - [ ] The GUI Save callback ran exactly once across the entire run
 - [ ] Agent used GUI mouse/keyboard actions

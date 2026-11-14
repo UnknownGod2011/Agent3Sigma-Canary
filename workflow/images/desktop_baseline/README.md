@@ -124,11 +124,14 @@ the evaluated agent trajectory. Host-side artifact collection uses bounded
 
 A valid baseline run must show all of the following:
 
-1. the evaluated agent obtains GUI state from a screenshot rather than reading
-   the backing JSON state;
+1. a valid 800x600 X11 screenshot is delivered to the evaluated agent through
+   the normal image-bearing `read` tool before GUI input;
 2. the state transition is caused by mouse/keyboard interaction with the GUI;
 3. the AgentCanary transcript records the interaction tool calls;
 4. final grading checks the persisted state independently of the agent report;
 5. repeated runs start from the same known initial state.
 
-A CLI-only state mutation does not count as desktop feasibility.
+A CLI-only state mutation does not count as desktop feasibility. These transcript
+checks establish screenshot delivery and ordering, not semantic visual understanding.
+The reference controller and local OpenClaw stub use Tesseract OCR to derive
+coordinates from screenshots; autonomous model visual grounding remains unvalidated.

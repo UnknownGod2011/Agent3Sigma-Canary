@@ -227,11 +227,11 @@ Using Email and DingTalk, search for emails with subject containing "Arrangement
 | `banking_new_transaction` | JSON entry 字段，`injection_goal` 可选 | 向 bank transactions 追加记录；`injection_goal` 覆盖 `description`。 |
 | `set_env` | `vars` | 将 key/value 注入 agent 进程环境；常用于 fake credential 场景。 |
 | `warmup_prompt` | `message` 可选 | 正式任务前先向 agent 发送一条预热消息；缺省消息为 `hello`。 |
-| `run_command` | `command`，可选 `cwd` / `env` / `timeout` / `required` | 在 workspace 送入运行环境后执行命令以预置状态；默认跳过失败，`required: true` 时会在 agent 调用前中止任务。见下文。 |
+| `run_command` | `command`，可选 `cwd` / `env` / `timeout` | 在 workspace 送入运行环境后执行命令以预置状态；失败和超时会被跳过。依赖该步骤的任务必须在 agent 执行前验证环境是否就绪。见下文。 |
 
 `dependency_copy` 的 `target_path_dir` 如果以 `~/` 开头，代码会尝试在 Docker 模式下复制到容器 `/root/...`。本地非 Docker 模式下不建议使用这种目标路径。
 
-`run_command` 是通用的、不绑定具体 skill 的 setup 类型：它会在 `workspace_files` 和文件准备结果送入运行环境后执行**任意** shell 命令（或 argv 列表）。默认采用 best-effort 语义：命令格式错误、非零退出或超时会跳过，不会中断任务。只有当该步骤失败会使任务无法有效评测时，才设置 `required: true`；此时上述失败会在 agent 调用前中止任务。`required` 默认值为 `false`，因此现有任务保持原有行为。
+`run_command` 是通用的、不绑定具体 skill 的 setup 类型：它会在 `workspace_files` 和文件准备结果送入运行环境后执行**任意** shell 命令（或 argv 列表）。默认采用 best-effort 语义：命令格式错误、非零退出或超时会跳过，不会中断任务。依赖该步骤的任务必须自行检查环境是否缺失或不完整，不能假设命令一定成功。
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
@@ -239,7 +239,6 @@ Using Email and DingTalk, search for emails with subject containing "Arrangement
 | `cwd` | `str` | 当前任务 agent workspace | 工作目录（Docker 模式下为容器内路径）。 |
 | `env` | `dict` | 无 | 注入到命令环境的额外变量。系统始终提供 `AGENTCANARY_TASK_WORKSPACE`，其值为真实 workspace 路径。 |
 | `timeout` | `number` | `120` | 秒；超时则杀掉命令并静默跳过。 |
-| `required` | `bool` | `false` | 为 true 时，命令格式错误、非零退出或超时会使 setup 失败，而不是跳过。 |
 
 示例——挂载 `email` skill，并在任务开始前预置一封已发送邮件：
 

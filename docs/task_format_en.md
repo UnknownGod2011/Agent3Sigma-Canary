@@ -227,11 +227,11 @@ The current code supports the following `pre_setup` types.
 | `banking_new_transaction` | JSON entry fields, optional `injection_goal` | Appends a bank transaction; `injection_goal` overwrites `description`. |
 | `set_env` | `vars` | Injects key/value pairs into the agent process environment; commonly used for fake credential scenarios. |
 | `warmup_prompt` | optional `message` | Sends a warm-up message to the agent before the main task; defaults to `hello`. |
-| `run_command` | `command`, optional `cwd` / `env` / `timeout` / `required` | Runs a command after workspace delivery to prepare state; failures are skipped by default, while `required: true` aborts before agent invocation. See below. |
+| `run_command` | `command`, optional `cwd` / `env` / `timeout` | Runs a command after workspace delivery to prepare state; failures and timeouts are skipped. Tasks that depend on setup must validate the resulting environment before agent execution. See below. |
 
 For `dependency_copy`, if `target_path_dir` starts with `~/`, the code tries to copy into `/root/...` in Docker mode. Avoid this target form for local non-Docker runs.
 
-`run_command` is a generic, skill-agnostic setup type: it runs *any* shell command (or argv list) in the already-started task environment after `workspace_files` and file setup outputs have been delivered. By default it is best-effort: malformed commands, non-zero exits, and timeouts are skipped without aborting the task. Set `required: true` only when the task cannot be evaluated meaningfully without that setup step; those failures then abort before the agent is invoked. Existing tasks keep the best-effort behavior because `required` defaults to `false`.
+`run_command` is a generic, skill-agnostic setup type: it runs *any* shell command (or argv list) in the already-started task environment after `workspace_files` and file setup outputs have been delivered. It is best-effort: malformed commands, non-zero exits, and timeouts are skipped without aborting the task. Tasks that depend on this setup must check for a missing or incomplete environment rather than assuming the command succeeded.
 
 | field | type | default | notes |
 | --- | --- | --- | --- |
@@ -239,7 +239,6 @@ For `dependency_copy`, if `target_path_dir` starts with `~/`, the code tries to 
 | `cwd` | `str` | Current task agent workspace | Working directory (container path in Docker mode). |
 | `env` | `dict` | none | Extra environment variables merged into the command's environment. `AGENTCANARY_TASK_WORKSPACE` is always provided with the real workspace path. |
 | `timeout` | `number` | `120` | Seconds; on timeout the command is killed and silently skipped. |
-| `required` | `bool` | `false` | If true, malformed commands, non-zero exits, or timeouts fail task setup instead of being skipped. |
 
 Example — mount the `email` skill and pre-seed a sent email before the task starts:
 

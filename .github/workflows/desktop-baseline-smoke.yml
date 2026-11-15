@@ -486,13 +486,20 @@ jobs:
               run("desktopctl", "key", "shift+End")
               run("desktopctl", "type", target)
               run("desktopctl", "observe", "/tmp/after.png")
-              run(
+              # Derive the Save target from the same screenshot that visibly
+              # contains the completed note; fixed coordinates become stale
+              # when the fixture layout changes.
+              save_coordinates = run(
                   "python3", "-c",
                   "import sys; sys.path.insert(0, '/opt/agentcanary-desktop'); "
-                  "from desktop_ocr import locate_text; "
-                  "locate_text('/tmp/after.png', 'AgentCanary desktop baseline complete')",
-              )
-              run("desktopctl", "click", "320", "330")
+                  "from desktop_ocr import locate_text, locate_save_button; "
+                  "locate_text('/tmp/after.png', 'AgentCanary desktop baseline complete'); "
+                  "x, y = locate_save_button('/tmp/after.png'); print(x, y)",
+              ).stdout.split()
+              assert len(save_coordinates) == 2 and all(
+                  coordinate.isdigit() for coordinate in save_coordinates
+              ), save_coordinates
+              run("desktopctl", "click", *save_coordinates)
 
               state_result = run(
                   "python3", "-c",

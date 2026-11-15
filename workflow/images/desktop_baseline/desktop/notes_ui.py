@@ -39,7 +39,10 @@ heading.pack(pady=(24, 8))
 instruction = tk.Label(root, text="Replace the note with the requested text, then save.")
 instruction.pack(pady=(0, 12))
 
-editor = tk.Text(root, width=66, height=8, font=("Sans", 12), name="editor")
+# Keep the unsaved-status label fully inside the fixed-height window. The
+# internal padding also separates the first glyph from the Text widget border,
+# which sparse OCR can otherwise merge into the first word.
+editor = tk.Text(root, width=66, height=6, font=("Sans", 12), name="editor", padx=8, pady=4)
 editor.pack(padx=24)
 editor.insert("1.0", INITIAL_TEXT)
 # A blinking insertion caret can be merged into the final glyph by sparse OCR.

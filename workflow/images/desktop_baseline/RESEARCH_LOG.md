@@ -2,7 +2,8 @@
 
 **Updated:** 2026-11-15  
 **Research branch:** `research/desktop-ui-baseline`  
-**Implementation commit summarized:** `08ec169e39d8eff169882ecf52caaf7006c3cdf9`  
+**Implementation revision:** `08ec169e39d8eff169882ecf52caaf7006c3cdf9`  
+**Branch HEAD before this log update:** `44e72148004285e8ed34d8c24ff35c428669e3ba`  
 **Canonical upstream:** [antgroup/Agent3Sigma-Canary](https://github.com/antgroup/Agent3Sigma-Canary)
 
 This file is a public, technical summary of the desktop/UI-agent feasibility work. It intentionally excludes private correspondence and personal workflow notes.
@@ -37,27 +38,28 @@ The desktop task produces a small machine-checkable state artifact inside the co
 
 The bind-mount experiment rejects unsafe file types and metadata (including symlinks, hard links, non-regular files, and oversized artifacts). A no-mount/no-copyback negative control verifies that host-side grading fails when the required state artifact is not transferred.
 
-The current question for upstream maintainers is whether AgentCanary should expose a general, opt-in task-scoped artifact-handoff mechanism for outputs needed by post-run grading, and which lifecycle/interface is preferred. This is a design question, not a claim that the existing runner is broken.
+The upstream discussion is about whether AgentCanary should expose a general, opt-in task-scoped artifact-handoff mechanism for outputs needed by post-run grading, and which lifecycle/interface is preferred. This is a design question, not a claim that the existing runner is broken.
 
 ## Validation status
 
-At branch HEAD `08ec169e39d8eff169882ecf52caaf7006c3cdf9`, these GitHub Actions workflows completed successfully:
+The latest three workflows completed successfully on branch HEAD `44e72148004285e8ed34d8c24ff35c428669e3ba`:
 
-- [Desktop reference lifecycle](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43706199131)
-- [Desktop baseline smoke test](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43706199209)
-- [Desktop compatibility against current upstream master](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43706199344)
+- [Desktop reference lifecycle](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43732637371)
+- [Desktop baseline smoke test](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43732637329)
+- [Desktop compatibility against upstream master](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43732637326)
 
-The reference-lifecycle workflow exercises repeated task-scoped bind-mount handoffs, repeated native OpenClaw CLI runs against a deterministic local provider, host-side grading, and a negative control. The upstream-compatibility workflow repeats the reference and local OpenClaw paths against the current upstream runner.
+The reference-lifecycle workflow exercises repeated task-scoped bind-mount handoffs, repeated native OpenClaw CLI runs against a deterministic local provider, host-side grading, and a negative control. The upstream-compatibility workflow exercises the reference and local OpenClaw paths against the current upstream runner.
+
+The local provider uses a scripted plan and Tesseract OCR. These runs validate screenshot-conditioned tool/runner integration and reproducibility, **not** autonomous visual reasoning or model quality. The optional live Gemini path is not claimed as passing evidence.
 
 ## Claim boundaries and limitations
 
-- The OCR reference controller and local OpenClaw provider use deterministic Tesseract-based screenshot localization and a scripted plan. They validate screenshot-conditioned tool/runner integration and reproducibility, **not** autonomous visual reasoning or model quality.
-- The latest smoke workflow skipped the optional live Gemini job; no live-model success is claimed by these results.
+- The OCR reference controller and local OpenClaw provider use deterministic Tesseract-based screenshot localization and a scripted plan. They validate integration and reproducibility, **not** autonomous visual reasoning or live-model quality.
 - The experimental container is not a security boundary. The current setup does not establish OS-level isolation between an evaluated agent and the GUI state. Do not use it to claim resistance to a hostile agent.
 - Security scenarios such as stale UI state, misleading confirmations, or partial execution remain future work after the baseline and trust boundary are reviewed.
 
 ## Upstream discussion status
 
-No upstream issue or pull request has been created by this research work as of this update. The intended next public discussion is one focused issue about task-scoped artifact handoff for Docker-backed evaluations—not a broad request for generic desktop support.
-
-After maintainer feedback, the next step is to share or open a draft PR for the validated research implementation, following the maintainers' preferred integration direction.
+- [Issue #2: Question: task-scoped artifact handoff for Docker-backed grading](https://github.com/antgroup/Agent3Sigma-Canary/issues/2) is open. It records the concrete handoff problem, the two prototype approaches, observed validation, explicit limitations, and asks maintainers for the preferred integration mechanism.
+- The research branch is [available here](https://github.com/UnknownGod2011/Agent3Sigma-Canary/tree/research/desktop-ui-baseline) for implementation review.
+- No pull request has been opened. The next step is to get architectural feedback on the artifact-handoff boundary and preferred integration shape before preparing a focused draft PR.

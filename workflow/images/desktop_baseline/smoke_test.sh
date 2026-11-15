@@ -185,8 +185,9 @@ assert state == expected, (state, expected)
 PY
 
 # A second actual Save callback must increment the counter rather than being
-# hidden by the already-correct saved/current text.
-desktopctl click 320 330
+# hidden by the already-correct saved/current text. The editor content changes
+# do not move the fixed Save control, so reuse the screenshot-derived location.
+desktopctl click "$SAVE_X" "$SAVE_Y"
 for _ in $(seq 1 30); do
   if python3 - "$STATE" <<'PY'
 import json, sys

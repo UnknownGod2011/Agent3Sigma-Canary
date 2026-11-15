@@ -2,7 +2,7 @@
 
 **Updated:** 2026-11-15  
 **Research branch:** `research/desktop-ui-baseline`  
-**Branch HEAD:** `08ec169e39d8eff169882ecf52caaf7006c3cdf9`  
+**Implementation commit summarized:** `08ec169e39d8eff169882ecf52caaf7006c3cdf9`  
 **Canonical upstream:** [antgroup/Agent3Sigma-Canary](https://github.com/antgroup/Agent3Sigma-Canary)
 
 This file is a public, technical summary of the desktop/UI-agent feasibility work. It intentionally excludes private correspondence and personal workflow notes.

@@ -48,7 +48,11 @@ def _run_deferred_pre_setup_commands_with_desktop_preflight(task, workspace) -> 
     command = (
         "set -eu; "
         "xdpyinfo -display :99 >/dev/null; "
-        "xdotool search --onlyvisible --name '^AgentCanary Desktop Baseline$' >/dev/null"
+        "window_id=$(xdotool search --onlyvisible --name '^AgentCanary Desktop Baseline$'); "
+        "test -n \"$window_id\"; "
+        "geometry=$(xdotool getwindowgeometry --shell \"$window_id\"); "
+        "printf '%s\\n' \"$geometry\" | grep -qx 'X=140'; "
+        "printf '%s\\n' \"$geometry\" | grep -qx 'Y=120'"
     )
     try:
         probe = docker.run_cmd(["sh", "-c", command], cwd=str(workspace), timeout=10)
@@ -59,9 +63,9 @@ def _run_deferred_pre_setup_commands_with_desktop_preflight(task, workspace) -> 
         suffix = f": {detail}" if detail else ""
         raise RuntimeError(
             "desktop baseline GUI preflight failed after pre_setup; expected "
-            "X11 display :99 and a visible Notes window" + suffix
+            "X11 display :99 and the Notes window at (140, 120)" + suffix
         )
-    print("Desktop runtime preflight passed: X11 display and visible Notes window are ready", flush=True)
+    print("Desktop runtime preflight passed: X11 display and Notes window at (140, 120) are ready", flush=True)
 
 
 def _capture_task_workspace(*args, **kwargs):

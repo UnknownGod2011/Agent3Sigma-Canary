@@ -37,10 +37,14 @@ contains the word “save”, the button is disambiguated by its centered positi
 above the visible `Not saved` status label. Both click positions are derived
 from OCR bounding boxes; missing or ambiguous text fails closed. The fixture start command also waits for the initial Tk paint to settle before the first observation.
 
-A local Xvfb probe completed the task at two different window origins. The
-derived editor and Save-button coordinates moved with the window, while the
-saved and current text remained exact. This is deterministic OCR-based
-reference behavior, not autonomous visual reasoning or model-quality evidence.
+The task's normal setup moves the Notes window from its fixture default at
+`+40+40` to `+140+120`, and the runtime preflight verifies that origin. The
+reference controller and local OpenClaw provider must derive their clicks from
+the delivered screenshots rather than relying on the default coordinates. A
+separate Xvfb layout probe also completed the task at both origins, with the
+derived editor and Save-button coordinates moving with the window. This is
+deterministic OCR-based reference behavior, not autonomous visual reasoning or
+model-quality evidence.
 
 ## Deterministic OpenClaw tool-loop integration
 

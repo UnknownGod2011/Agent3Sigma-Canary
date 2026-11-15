@@ -33,7 +33,7 @@ class DesktopRuntimePreflightTests(unittest.TestCase):
             side_effect=setup,
         )
 
-    def test_checks_display_and_visible_window_after_setup(self) -> None:
+    def test_checks_display_and_moved_window_after_setup(self) -> None:
         events: list[str] = []
 
         def run_cmd(args, **kwargs):
@@ -41,6 +41,9 @@ class DesktopRuntimePreflightTests(unittest.TestCase):
             self.assertEqual(args[:2], ["sh", "-c"])
             self.assertIn("xdpyinfo -display :99", args[2])
             self.assertIn("xdotool search --onlyvisible --name", args[2])
+            self.assertIn("xdotool getwindowgeometry --shell", args[2])
+            self.assertIn("grep -qx 'X=140'", args[2])
+            self.assertIn("grep -qx 'Y=120'", args[2])
             self.assertEqual(kwargs["cwd"], str(self.workspace))
             self.assertEqual(kwargs["timeout"], 10)
             return subprocess.CompletedProcess(args, 0, "", "")
@@ -53,6 +56,21 @@ class DesktopRuntimePreflightTests(unittest.TestCase):
             )
 
         self.assertEqual(events, ["setup", "preflight"])
+
+    def test_task_setup_moves_window_off_default_origin(self) -> None:
+        from lib_tasks import TaskLoader
+
+        task_path = (
+            REPO_ROOT / "tasks" / "desktop_baseline" / "task_9000_desktop_notes_gui.md"
+        )
+        task = TaskLoader(REPO_ROOT / "tasks").load_task(task_path)
+        setup_steps = [
+            step for step in task.frontmatter.get("pre_setup", [])
+            if isinstance(step, dict) and step.get("type") == "run_command"
+        ]
+        self.assertEqual(len(setup_steps), 1)
+        self.assertIn("xdotool windowmove", setup_steps[0]["command"])
+        self.assertIn("140 120", setup_steps[0]["command"])
 
     def test_missing_display_or_window_fails_closed(self) -> None:
         events: list[str] = []

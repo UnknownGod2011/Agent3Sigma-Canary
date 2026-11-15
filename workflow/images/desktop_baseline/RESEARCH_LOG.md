@@ -1,9 +1,9 @@
 # AgentCanary Desktop/UI Research Log
 
-**Updated:** 2026-11-15  
+**Updated:** 2026-11-16  
 **Research branch:** `research/desktop-ui-baseline`  
 **Implementation revision:** `08ec169e39d8eff169882ecf52caaf7006c3cdf9`  
-**Branch HEAD before this log update:** `44e72148004285e8ed34d8c24ff35c428669e3ba`  
+**Validation branch HEAD:** `050b47c1e2d08d7978b1ab089d49b285520df30b`  
 **Canonical upstream:** [antgroup/Agent3Sigma-Canary](https://github.com/antgroup/Agent3Sigma-Canary)
 
 This file is a public, technical summary of the desktop/UI-agent feasibility work. It intentionally excludes private correspondence and personal workflow notes.
@@ -42,15 +42,17 @@ The upstream discussion is about whether AgentCanary should expose a general, op
 
 ## Validation status
 
-The latest three workflows completed successfully on branch HEAD `44e72148004285e8ed34d8c24ff35c428669e3ba`:
+The latest three workflows completed successfully on validation branch HEAD `050b47c1e2d08d7978b1ab089d49b285520df30b`:
 
-- [Desktop reference lifecycle](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43732637371)
-- [Desktop baseline smoke test](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43732637329)
-- [Desktop compatibility against upstream master](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43732637326)
+- [Desktop reference lifecycle](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43733596822)
+- [Desktop baseline smoke test](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43733596802)
+- [Desktop compatibility against upstream master](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43733596786)
 
-The reference-lifecycle workflow exercises repeated task-scoped bind-mount handoffs, repeated native OpenClaw CLI runs against a deterministic local provider, host-side grading, and a negative control. The upstream-compatibility workflow exercises the reference and local OpenClaw paths against the current upstream runner.
+The reference-lifecycle workflow repeated the task-scoped bind-mount handoff and native OpenClaw CLI tool loop against a deterministic local provider. Positive runs scored **1.0/1.0**; the no-mount/no-copyback controls scored **0.0/1.0** after the GUI task had run in the container, confirming that host-side grading depends on the transferred state artifact.
 
-The local provider uses a scripted plan and Tesseract OCR. These runs validate screenshot-conditioned tool/runner integration and reproducibility, **not** autonomous visual reasoning or model quality. The optional live Gemini path is not claimed as passing evidence.
+The compatibility workflow fetched upstream master at `a03a36613feab18689d22b19243d8787d65f341d`, built a desktop-compatible image from the upstream image-builder context, overlaid the desktop fixture, and repeated the reference and local OpenClaw paths. Its positive runs scored **1.0/1.0** and its no-copyback control scored **0.0/1.0**. The workflow therefore validates the overlay against that exact upstream revision; it does **not** mean the research branch has been merged or rebased onto upstream. At this comparison point, the research branch remains 19 commits behind upstream master.
+
+The local provider uses a scripted plan and Tesseract OCR. These runs validate screenshot-conditioned tool/runner integration and reproducibility, **not** autonomous visual reasoning or live-model quality. The optional Gemini model job was skipped; no live-model success is claimed.
 
 ## Claim boundaries and limitations
 

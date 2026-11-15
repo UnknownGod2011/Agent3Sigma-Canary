@@ -86,9 +86,24 @@ done
   exit 1
 }
 
-# The Save button is deterministic in this fixed-size fixture. Clicking it
-# validates pointer delivery and invokes the actual Tk callback.
-desktopctl click 320 330
+# The editor height is intentionally adjustable to keep the complete
+# application inside the virtual display. Derive the Save target from the
+# visible control and its adjacent unsaved-status label instead of pinning a
+# coordinate that becomes stale when the layout changes.
+save_coordinates="$(python3 - "$REUSED" <<'PY'
+import sys
+sys.path.insert(0, "/opt/agentcanary-desktop")
+from desktop_ocr import locate_save_button
+x, y = locate_save_button(sys.argv[1])
+print(x, y)
+PY
+)"
+read -r SAVE_X SAVE_Y <<<"$save_coordinates"
+[[ "$SAVE_X" =~ ^[0-9]+$ && "$SAVE_Y" =~ ^[0-9]+$ ]] || {
+  echo "OCR did not return valid Save-button coordinates" >&2
+  exit 1
+}
+desktopctl click "$SAVE_X" "$SAVE_Y"
 
 # Allow Tk to process the button callback before checking externally.
 for _ in $(seq 1 30); do

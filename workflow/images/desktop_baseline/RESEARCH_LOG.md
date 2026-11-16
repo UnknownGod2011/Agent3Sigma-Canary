@@ -1,12 +1,12 @@
 # AgentCanary Desktop/UI Research Log
 
-**Updated:** 2026-11-16 19:31 IST  
+**Updated:** 2026-11-16 23:59 IST  
 **Research branch:** `research/desktop-ui-baseline`  
-**Branch tip before this audit entry:** `73046b0cff7c03df6b0a01765ca66374a5d62535`  
+**Branch tip before this audit entry:** `3569a31a5afa25a3e8302d9f75c1135a0067b3e8`  
 **Last implementation revision validated by the three CI workflows:** `c6562cecd4805bb2c93997cf6210630cdaf8fd46`  
 **Fork master HEAD:** `5072b78260d6dfe16f28a479ae83db4ef5c86bce`  
 **Canonical upstream master HEAD:** `a03a36613feab18689d22b19243d8787d65f341d`  
-**Comparison at reviewed branch tip:** 206 commits ahead of upstream / 19 behind; 206 ahead of fork master / 0 behind  
+**Comparison at reviewed branch tip:** 207 commits ahead of upstream / 19 behind; 207 ahead of fork master / 0 behind  
 **Canonical upstream:** [antgroup/Agent3Sigma-Canary](https://github.com/antgroup/Agent3Sigma-Canary)
 
 This file is a public, technical summary of the desktop/UI-agent feasibility work. It intentionally excludes private correspondence and personal workflow notes.
@@ -96,3 +96,17 @@ The local provider uses a scripted plan and Tesseract OCR. These runs validate s
 - Unresolved: maintainer preference for bounded container export versus a task-scoped bind mount; live-model visual grounding; and the container/agent trust boundary (the fixture runs as root and is not a security isolation mechanism). The research branch remains 19 commits behind current upstream and should not be proposed wholesale.
 - Highest-value next step: wait for architectural feedback on issue #2. If maintainers prefer a handoff shape, extract only the minimal compatible adapter/API onto a branch based on current upstream and rerun the compatibility workflow before considering a draft PR. Do not add security fault injection or claim autonomous visual reasoning from the current scripted/Tesseract evidence.
 
+
+
+## Artifact-handoff API boundary review — 2026-11-16 23:59 IST
+
+- Rechecked refs immediately before this entry: canonical upstream master `a03a36613feab18689d22b19243d8787d65f341d`, fork master `5072b78260d6dfe16f28a479ae83db4ef5c86bce`, and research branch `3569a31a5afa25a3e8302d9f75c1135a0067b3e8`. The research branch is 207 commits ahead of upstream and 19 behind; it is 207 commits ahead of fork master and 0 behind.
+- Re-read the current upstream Docker/benchmark lifecycle. `scripts/lib_docker.py` already exposes low-level `start(extra_mounts=...)` bind-mount support, and `scripts/benchmark.py` passes mounts currently derived from required skills. The runner does not expose a task-frontmatter contract for arbitrary grader artifacts. The task runner calls `docker.stop()` before host-side `grade_task()`; `ensure_transcripts_on_host()` exports agent session files, not arbitrary task-generated artifacts. Issue #2 should therefore distinguish existing low-level bind-mount capability from the missing task-scoped artifact lifecycle / pre-teardown grading handoff contract.
+- Rechecked upstream discussions: issue [#2](https://github.com/antgroup/Agent3Sigma-Canary/issues/2) remains open with no comments; PR [#1](https://github.com/antgroup/Agent3Sigma-Canary/pull/1) remains the only upstream PR and is merged. No PR authored by `UnknownGod2011`, no new desktop/UI duplicate, and no maintainer response were found.
+- Verified the three latest workflows on research branch commit `3569a31`: [desktop smoke](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43883829183), [upstream compatibility](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43883829320), and [reference lifecycle](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43883829192) all completed successfully. The compatibility workflow fetched current upstream SHA `a03a366` in an isolated checkout and overlaid only the desktop fixture/task and helpers, not the research branch's modified core runner.
+- Inspected compatibility artifact `14232684279` from run `43883829320`. The reference controller and deterministic local OpenClaw provider each completed repeated runs at 1.0/1.0; each run recorded five GUI actions and two screenshot observations delivered through image-bearing `read` results. Repeated screenshots, ordered GUI actions, and final-state bytes had identical SHA-256 hashes. The no-bind-mount negative control scored 0.0/1.0. Direct artifact inspection confirmed valid 800x600 PNGs of the actual Tk Notes window before and after editing, with the target text visible before the single Save click.
+- The Gemini/live-model job was skipped by its explicit opt-in condition. The provider is scripted and uses Tesseract OCR, so this is deterministic GUI/tool/transcript/grading integration evidence, not autonomous visual reasoning or live-model quality. The image still runs the fixture and agent as container root; it is not a security isolation boundary.
+- Implementation: no runtime or grading code changed. This entry records the API-boundary finding and current evidence only. Local Docker execution was unavailable in this environment, so no local container run is claimed; the cited checks are GitHub Actions runs.
+- Public actions: none. Issue #2 remains the single design discussion; no issue, comment, or PR was created in this run.
+- Unresolved: maintainer preference for bounded export versus a task-scoped bind mount / lifecycle hook; autonomous visual grounding; and a genuine agent/GUI isolation boundary. The research branch remains 19 commits behind upstream and should not be proposed wholesale.
+- Highest-value next step: wait for maintainer feedback on issue #2. If maintainers point to the existing `extra_mounts` API, clarify that mount creation is already available but task-scoped artifact capture before teardown is not. Only then prepare a minimal extraction based on current upstream and rerun the compatibility workflow; do not add security fault injection or claim autonomous visual reasoning.

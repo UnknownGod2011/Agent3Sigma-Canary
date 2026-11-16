@@ -69,24 +69,6 @@ def main() -> None:
     print("desktop evidence manifest records source, run, and task-definition provenance")
     print("desktop grader-only state evidence retention is configured")
 
-    native_bind_mount_step = (
-        "      - name: Verify task-scoped bind-mount handoff with native OpenClaw CLI (repeat twice)"
-    )
-    assert native_bind_mount_step in lifecycle_source, (
-        "missing native OpenClaw bind-mount lifecycle experiment"
-    )
-    step_start = lifecycle_source.index(native_bind_mount_step)
-    step_end = lifecycle_source.find("\n      - name:", step_start + len(native_bind_mount_step))
-    native_step = lifecycle_source[step_start:step_end if step_end >= 0 else None]
-    for required in (
-        "DOCKER_IMAGE: agentcanary-desktop-openclaw-stub",
-        "run_bind_mount_benchmark.py",
-        "--model desktop-stub/desktop-fixture",
-        "desktop-bind-mount-openclaw-stub-$attempt",
-        'value.startswith("desktop-reference-")',
-    ):
-        assert required in native_step, f"native OpenClaw bind-mount experiment missing: {required}"
-    print("native OpenClaw bind-mount experiment is part of the desktop lifecycle gate")
     compatibility_path = ROOT / ".github" / "workflows" / "desktop-pr1-compatibility.yml"
     compatibility_source = compatibility_path.read_text(encoding="utf-8")
     assert 'git -C "$RUNNER_TEMP/upstream-master" fetch --depth=1 origin refs/heads/master' in compatibility_source, (
@@ -94,6 +76,28 @@ def main() -> None:
     )
     assert "UPSTREAM_MASTER_SHA" in compatibility_source, "compatibility evidence must record the tested upstream master SHA"
     assert "refs/pull/1/head" not in compatibility_source, "compatibility must not remain pinned to PR #1"
+
+    native_bind_mount_step = (
+        "      - name: Run task-scoped bind-mount OpenClaw tool loop twice on upstream runner"
+    )
+    assert native_bind_mount_step in compatibility_source, (
+        "native OpenClaw bind-mount experiment must run against the current upstream runner"
+    )
+    assert "Verify task-scoped bind-mount handoff with native OpenClaw CLI (repeat twice)" not in lifecycle_source, (
+        "the stale fork runner must not own the native OpenClaw CLI integration gate"
+    )
+    step_start = compatibility_source.index(native_bind_mount_step)
+    step_end = compatibility_source.find("\\n      - name:", step_start + len(native_bind_mount_step))
+    native_step = compatibility_source[step_start:step_end if step_end >= 0 else None]
+    for required in (
+        "DOCKER_IMAGE=agentcanary-desktop-upstream-openclaw-stub",
+        "run_bind_mount_benchmark.py",
+        "--model desktop-stub/desktop-fixture",
+        "upstream-bind-mount-openclaw-stub-$attempt",
+        'value.startswith("desktop-reference-")',
+    ):
+        assert required in native_step, f"native OpenClaw bind-mount experiment missing: {required}"
+    print("native OpenClaw bind-mount experiment is part of the upstream compatibility gate")
     print("desktop compatibility workflow tracks current upstream master")
     print("desktop CI trigger dependency checks passed")
 

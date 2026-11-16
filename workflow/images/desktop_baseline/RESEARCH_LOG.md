@@ -1,12 +1,12 @@
 # AgentCanary Desktop/UI Research Log
 
-**Updated:** 2026-11-16 10:59 IST  
+**Updated:** 2026-11-16 19:31 IST  
 **Research branch:** `research/desktop-ui-baseline`  
-**Branch tip before this audit entry:** `6ea431f75fb6ecac8c0fd28ebed823cd95354ceb`  
+**Branch tip before this audit entry:** `73046b0cff7c03df6b0a01765ca66374a5d62535`  
 **Last implementation revision validated by the three CI workflows:** `c6562cecd4805bb2c93997cf6210630cdaf8fd46`  
 **Fork master HEAD:** `5072b78260d6dfe16f28a479ae83db4ef5c86bce`  
 **Canonical upstream master HEAD:** `a03a36613feab18689d22b19243d8787d65f341d`  
-**Comparison at reviewed branch tip:** 205 commits ahead of upstream / 19 behind; 205 ahead of fork master / 0 behind  
+**Comparison at reviewed branch tip:** 206 commits ahead of upstream / 19 behind; 206 ahead of fork master / 0 behind  
 **Canonical upstream:** [antgroup/Agent3Sigma-Canary](https://github.com/antgroup/Agent3Sigma-Canary)
 
 This file is a public, technical summary of the desktop/UI-agent feasibility work. It intentionally excludes private correspondence and personal workflow notes.
@@ -83,3 +83,16 @@ The local provider uses a scripted plan and Tesseract OCR. These runs validate s
 - Implementation work in this audit: no code changes. Files changed by this entry: this research log only. No local tests were run; the exact CI results above were produced by GitHub Actions on the implementation revision, not by this documentation update.
 - Unresolved: maintainer preference for bounded export versus task-scoped bind mount; live-model visual reasoning; and a genuine agent/GUI isolation boundary. The current container runs as root and must not support security-robustness claims.
 - Highest-value next step: keep issue #2 as the single public design discussion and wait for maintainer feedback. Only prepare a focused draft PR after agreeing on the artifact-handoff interface and extracting the minimal desktop changes onto current upstream; the present branch is 19 commits behind and should not be proposed as a whole. A live-model run requires explicit workflow opt-in, configured credentials, and approval for possible provider cost.
+
+## Independent lifecycle and upstream compatibility recheck — 2026-11-16 19:31 IST
+
+- Rechecked repository refs: canonical upstream master `a03a36613feab18689d22b19243d8787d65f341d`, fork master `5072b78260d6dfe16f28a479ae83db4ef5c86bce`, and research branch `73046b0cff7c03df6b0a01765ca66374a5d62535`. The branch is 206 commits ahead of upstream and 19 behind; it is 206 commits ahead of fork master and 0 behind. The upstream delta since the fork base is the merged NARA-Bench/native-runtime integration (PR #1); no later upstream commit was observed.
+- Re-ran the repository/issue inventory: upstream issue #2 remains open with no comments; PR #1 is merged; no closed upstream issues or additional upstream PRs were returned. No maintainer feedback or new public action was observed.
+- Verified the three workflows on branch commit `73046b0cff7c03df6b0a01765ca66374a5d62535`: [desktop smoke](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43811414708), [upstream compatibility](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43811414645), and [reference lifecycle](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43811414624) all completed successfully. The optional Gemini/live-model job was skipped by its explicit opt-in condition; no live-model result is claimed.
+- Inspected the retained artifacts from the latest reference and compatibility runs. On the exact upstream SHA above, repeated reference-controller and native OpenClaw local-provider runs scored 1.0/1.0; task-scoped bind-mount repeats also scored 1.0/1.0. Repeated pairs had identical final-state bytes, ordered GUI-action hashes, and screenshot hashes. The no-copyback and no-bind-mount controls scored 0.0/1.0. The compatibility artifact records two screenshot/read pairs and the five GUI actions (editor click, Home, Shift+End, exact text entry, Save click); decoded screenshots show the real Tk Notes window before and after editing. This remains deterministic integration evidence, not autonomous visual-reasoning or live-model-quality evidence.
+- Re-read the current upstream runner lifecycle and the overlay adapter: AgentCanary starts the Docker container, runs deferred `run_command` pre-setup, invokes `execute_openclaw_task`, copies transcripts through the adapter, calls `docker.stop()`, and then calls host-side `grade_task()`. The wrapper intercepts that stop boundary to export the grader-only state artifact before teardown. The compatibility workflow separately fetches current upstream master, overlays only the desktop fixture/task, and repeats the lifecycle there.
+- Implementation work: no runtime or grading code changed. This entry and the header ref reconciliation are the only files changed in this audit. No local tests were run; the exact GitHub Actions runs above are the checks that executed.
+- Public actions: no upstream issue, PR, or comment was created. Issue #2 remains the single public design discussion. No fork PR was opened.
+- Unresolved: maintainer preference for bounded container export versus a task-scoped bind mount; live-model visual grounding; and the container/agent trust boundary (the fixture runs as root and is not a security isolation mechanism). The research branch remains 19 commits behind current upstream and should not be proposed wholesale.
+- Highest-value next step: wait for architectural feedback on issue #2. If maintainers prefer a handoff shape, extract only the minimal compatible adapter/API onto a branch based on current upstream and rerun the compatibility workflow before considering a draft PR. Do not add security fault injection or claim autonomous visual reasoning from the current scripted/Tesseract evidence.
+

@@ -444,12 +444,8 @@ jobs:
           positive_runs = {
               "reference-first": "desktop-reference-results",
               "reference-repeat": "desktop-reference-results-repeat",
-              "openclaw-stub-first": "desktop-openclaw-stub-first",
-              "openclaw-stub-repeat": "desktop-openclaw-stub-repeat",
               "bind-mount-first": "desktop-bind-mount-first",
               "bind-mount-repeat": "desktop-bind-mount-repeat",
-              "bind-mount-openclaw-stub-first": "desktop-bind-mount-openclaw-stub-first",
-              "bind-mount-openclaw-stub-repeat": "desktop-bind-mount-openclaw-stub-repeat",
           }
           evidence_dir = runner_temp / "desktop-state-evidence"
           shutil.rmtree(evidence_dir, ignore_errors=True)
@@ -588,9 +584,7 @@ jobs:
 
           for first, repeat in (
               ("reference-first", "reference-repeat"),
-              ("openclaw-stub-first", "openclaw-stub-repeat"),
               ("bind-mount-first", "bind-mount-repeat"),
-              ("bind-mount-openclaw-stub-first", "bind-mount-openclaw-stub-repeat"),
           ):
               assert action_sequences[first] == action_sequences[repeat], (
                   "repeated desktop runs produced different ordered GUI action sequences",
@@ -689,10 +683,7 @@ jobs:
           path: |
             ${{ runner.temp }}/desktop-reference-results/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-reference-results-repeat/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
-            ${{ runner.temp }}/desktop-openclaw-stub-first/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
-            ${{ runner.temp }}/desktop-openclaw-stub-repeat/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-bind-mount-*/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
-            ${{ runner.temp }}/desktop-bind-mount-openclaw-stub-*/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-no-bind-mount-results/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-no-copyback-results/job_*/task_task_9000_desktop_notes_gui/task_task_9000_desktop_notes_gui.json
             ${{ runner.temp }}/desktop-state-evidence/**

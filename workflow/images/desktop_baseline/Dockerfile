@@ -4,7 +4,7 @@
 # fixture plus screenshot/mouse/keyboard helpers.
 FROM node:22-bookworm
 
-LABEL org.opencontainers.image.description="AgentCanary experimental deterministic desktop UI baseline"
+# Match the official builder metadata so lib_docker.uses_native_openclaw()\n# selects the embedded --local agent path instead of Gateway dispatch.\nLABEL org.opencontainers.image.description="AgentCanary experimental deterministic desktop UI baseline" \\\n      ai.agentcanary.image_type="official" \\\n      ai.agentcanary.openclaw_version="2026.7.1-2"
 
 RUN apt-get update && apt-get install -y \
     python3 \

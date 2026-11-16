@@ -648,6 +648,22 @@ def main() -> None:
         ))
         assert grade(task, workspace, hidden_write) == 0.0
 
+        # A state file must not be discovered or manipulated indirectly through
+        # Python globbing when its filename is not present in the command text.
+        glob_state_write = transcript(commands + (
+            "python3 -c 'import glob; path = glob.glob(\"/tmp/agentcanary-desktop/*.json\")[0]; open(path, \"w\").write(\"forged\")'",
+        ))
+        assert grade(task, workspace, glob_state_write) == 0.0
+
+        # Shell expansion must not turn a globbed backing-state read into an
+        # apparently valid desktopctl type action.
+        glob_state_read = transcript((
+            "desktopctl observe /tmp/before.png",
+            "desktopctl type \"$(cat /tmp/agentcanary-desktop/*.json)\"",
+            *commands[2:],
+        ))
+        assert grade(task, workspace, glob_state_read) == 0.0
+
         shell_substitution = transcript((
             "desktopctl observe /tmp/$(printf x).png",
             *commands[1:],

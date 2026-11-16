@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y \
 RUN pip3 install certifi --break-system-packages
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
-RUN npm install -g openclaw@2026.4.11 --unsafe-perm
+RUN npm install -g openclaw@2026.7.1-2 --unsafe-perm --ignore-scripts
 
 RUN mkdir -p /root/.openclaw/skills
 COPY docker/openclaw.json /root/.openclaw/openclaw.json

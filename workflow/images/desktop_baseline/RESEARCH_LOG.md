@@ -1,9 +1,11 @@
 # AgentCanary Desktop/UI Research Log
 
-**Updated:** 2026-11-16  
+**Updated:** 2026-11-16 08:52 IST  
 **Research branch:** `research/desktop-ui-baseline`  
-**Implementation revision:** `08ec169e39d8eff169882ecf52caaf7006c3cdf9`  
-**Validation branch HEAD:** `050b47c1e2d08d7978b1ab089d49b285520df30b`  
+**Research branch HEAD:** `c6562cecd4805bb2c93997cf6210630cdaf8fd46`  
+**Fork master HEAD:** `5072b78260d6dfe16f28a479ae83db4ef5c86bce`  
+**Canonical upstream master HEAD:** `a03a36613feab18689d22b19243d8787d65f341d`  
+**Comparison:** 204 commits ahead of upstream / 19 behind; 204 ahead of fork master / 0 behind  
 **Canonical upstream:** [antgroup/Agent3Sigma-Canary](https://github.com/antgroup/Agent3Sigma-Canary)
 
 This file is a public, technical summary of the desktop/UI-agent feasibility work. It intentionally excludes private correspondence and personal workflow notes.
@@ -42,15 +44,17 @@ The upstream discussion is about whether AgentCanary should expose a general, op
 
 ## Validation status
 
-The latest three workflows completed successfully on validation branch HEAD `050b47c1e2d08d7978b1ab089d49b285520df30b`:
+All three latest workflows completed successfully on research branch HEAD `c6562cecd4805bb2c93997cf6210630cdaf8fd46`:
 
-- [Desktop reference lifecycle](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43733596822)
-- [Desktop baseline smoke test](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43733596802)
-- [Desktop compatibility against upstream master](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43733596786)
+- [Desktop reference lifecycle](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43787168606)
+- [Desktop baseline smoke test](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43787168601)
+- [Desktop compatibility against upstream master](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/43787168589)
+
+The smoke workflow's evidence-parser regression suite now also covers Python-glob state-file write attempts and shell-glob expansion into an otherwise allowed `desktopctl type` command; both are rejected by the fail-closed grader.
 
 The reference-lifecycle workflow repeated the task-scoped bind-mount handoff and native OpenClaw CLI tool loop against a deterministic local provider. Positive runs scored **1.0/1.0**; the no-mount/no-copyback controls scored **0.0/1.0** after the GUI task had run in the container, confirming that host-side grading depends on the transferred state artifact.
 
-The compatibility workflow fetched upstream master at `a03a36613feab18689d22b19243d8787d65f341d`, built a desktop-compatible image from the upstream image-builder context, overlaid the desktop fixture, and repeated the reference and local OpenClaw paths. Its positive runs scored **1.0/1.0** and its no-copyback control scored **0.0/1.0**. The workflow therefore validates the overlay against that exact upstream revision; it does **not** mean the research branch has been merged or rebased onto upstream. At this comparison point, the research branch remains 19 commits behind upstream master.
+The compatibility workflow fetched current upstream master at `a03a36613feab18689d22b19243d8787d65f341d`, ran the desktop adapter regression suite against that runner, built a desktop-compatible image from the upstream image-builder context, and repeated the reference and local OpenClaw paths. Its positive runs scored **1.0/1.0** and its no-mount control scored **0.0/1.0**. The workflow therefore validates the overlay against that exact upstream revision; it does **not** mean the research branch has been merged or rebased onto upstream. The branch remains 19 commits behind upstream master.
 
 The local provider uses a scripted plan and Tesseract OCR. These runs validate screenshot-conditioned tool/runner integration and reproducibility, **not** autonomous visual reasoning or live-model quality. The optional Gemini model job was skipped; no live-model success is claimed.
 
@@ -62,6 +66,6 @@ The local provider uses a scripted plan and Tesseract OCR. These runs validate s
 
 ## Upstream discussion status
 
-- [Issue #2: Question: task-scoped artifact handoff for Docker-backed grading](https://github.com/antgroup/Agent3Sigma-Canary/issues/2) is open. It records the concrete handoff problem, the two prototype approaches, observed validation, explicit limitations, and asks maintainers for the preferred integration mechanism.
+- [Issue #2: Question: task-scoped artifact handoff for Docker-backed grading](https://github.com/antgroup/Agent3Sigma-Canary/issues/2) remains open with no maintainer comments as of this update. It records the concrete handoff problem, the two prototype approaches, observed validation, explicit limitations, and asks maintainers for the preferred integration mechanism.
 - The research branch is [available here](https://github.com/UnknownGod2011/Agent3Sigma-Canary/tree/research/desktop-ui-baseline) for implementation review.
 - No pull request has been opened. The next step is to get architectural feedback on the artifact-handoff boundary and preferred integration shape before preparing a focused draft PR.

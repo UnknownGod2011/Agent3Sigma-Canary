@@ -2,11 +2,11 @@
 
 **Updated:** 2026-11-17 12:59 IST
 **Research branch:** `research/desktop-ui-baseline`  
-**Latest branch revision with all three desktop workflows green:** `92d58b5cf780deba959b338fab36fd748d5a718c`  
+**Latest branch revision with all three desktop workflows green:** `34725df43b58df8b579f84d2590a9bdda203fd8b`  
 **Last implementation-code revision (runtime/task/grader unchanged since):** `319fdc21d4cb38cb4fb3bcf788bb9de66b09a6a8`  
 **Fork master HEAD:** `5072b78260d6dfe16f28a479ae83db4ef5c86bce`  
 **Canonical upstream master HEAD:** `a03a36613feab18689d22b19243d8787d65f341d`  
-**Comparison at latest audited branch tip:** 226 commits ahead of fork master / 19 commits behind upstream  
+**Comparison at latest CI-validated branch tip:** 227 commits ahead of fork master / 19 commits behind upstream  
 **Canonical upstream:** [antgroup/Agent3Sigma-Canary](https://github.com/antgroup/Agent3Sigma-Canary)
 
 This file is a public, technical summary of the desktop/UI-agent feasibility work. It intentionally excludes private correspondence and personal workflow notes.
@@ -246,3 +246,12 @@ The local provider uses a scripted plan and Tesseract OCR. These runs validate s
 - Implementation: no runtime, task, grader, or upstream code changed. The seven commits since the last implementation-code revision changed only this research log. No local Docker or test execution was performed; the checks cited above are completed GitHub Actions runs and inspected artifacts. No issue, comment, or PR was created or edited upstream; this entry updates only the research-branch technical log.
 - Unresolved: maintainer preference for bounded `docker exec` export versus a task-scoped bind mount/lifecycle hook; the future task/image capability-gating interface; autonomous visual grounding; and a genuine agent/GUI isolation boundary. The research branch remains 19 commits behind upstream and must not be proposed wholesale.
 - Highest-value next step: keep issue #2 as the sole public design discussion and wait for maintainer architectural feedback. If maintainers choose a handoff shape, extract only the minimal compatible mechanism from current upstream and rerun the compatibility workflow before considering a focused draft PR. Do not open a second issue, add security fault injection, or describe scripted/Tesseract results as autonomous visual reasoning.
+
+
+## CI completion follow-up — 2026-11-17 13:09 IST
+
+- The three workflows triggered by the log-only commit `34725df43b58df8b579f84d2590a9bdda203fd8b` have now completed successfully: [desktop smoke 44040118861](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/44040118861), [reference lifecycle 44040118871](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/44040118871), and [current-upstream compatibility 44040118963](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/44040118963). The optional Gemini live-model job was skipped by explicit opt-in.
+- Downloaded and parsed the two lifecycle artifacts from these runs. The reference workflow has four positive reference/bind-mount runs at 1.0/1.0 and two negative controls at 0.0/1.0. The current-upstream workflow has eight positive reference/OpenClaw-local-provider runs (with and without the task-scoped bind mount), all at 1.0/1.0, and two no-mount controls at 0.0/1.0. Repeated positive runs preserve identical final-state bytes, GUI-action sequences, and screenshot payload hashes. The compatibility artifact records upstream master `a03a36613feab18689d22b19243d8787d65f341d`.
+- These runs were triggered by a research-log-only commit; no runtime/task/grader code changed. The workflows re-exercised the existing image, X11/Tk fixture, reference lifecycle, task-scoped artifact handoff, negative controls, and deterministic OpenClaw tool loop. No local Docker execution or live-model visual reasoning test was performed.
+- Fresh refs immediately before this follow-up: upstream `a03a36613feab18689d22b19243d8787d65f341d`, fork master `5072b78260d6dfe16f28a479ae83db4ef5c86bce`, research tip `34725df43b58df8b579f84d2590a9bdda203fd8b`; comparison remains 227 ahead of the upstream merge base and 19 behind upstream. Issue #2 remains open with zero comments. No public upstream action was taken.
+- Highest-value next step remains unchanged: wait for maintainer feedback on issue #2 before choosing or extracting an upstream artifact-handoff API. Do not open another issue or add security fault injection.

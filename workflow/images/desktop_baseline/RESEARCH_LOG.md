@@ -2,11 +2,11 @@
 
 **Updated:** 2026-11-17 10:54 IST
 **Research branch:** `research/desktop-ui-baseline`  
-**Branch tip after this audit entry:** `81fb16845d013045205894211673ad76dc48df6f`  
-**Last implementation revision validated by the three CI workflows:** `9269952f8ac90ebae7e2f10bd1a82556d29958ff`  
+**Latest audit commit:** `44b1c4d0897fcad917ed9c9fd56ee54ff69e27f8`  
+**Last implementation revision validated by the three CI workflows:** `319fdc21d4cb38cb4fb3bcf788bb9de66b09a6a8`  
 **Fork master HEAD:** `5072b78260d6dfe16f28a479ae83db4ef5c86bce`  
 **Canonical upstream master HEAD:** `a03a36613feab18689d22b19243d8787d65f341d`  
-**Comparison at reviewed branch tip:** 216 commits ahead of upstream / 19 behind; 216 ahead of fork master / 0 behind  
+**Comparison at latest audited branch tip:** 222 commits ahead of fork master / 19 commits behind upstream  
 **Canonical upstream:** [antgroup/Agent3Sigma-Canary](https://github.com/antgroup/Agent3Sigma-Canary)
 
 This file is a public, technical summary of the desktop/UI-agent feasibility work. It intentionally excludes private correspondence and personal workflow notes.

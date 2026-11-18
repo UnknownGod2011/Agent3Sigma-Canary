@@ -1,13 +1,13 @@
 # AgentCanary Desktop/UI Research Log
 
-**Updated:** 2026-11-18 14:59 IST
+**Updated:** 2026-11-18 19:55 IST
 **Research branch:** `research/desktop-ui-baseline`  
-**Branch tip at audit start (log-only):** `7d927f3a8a4d7814e30f32192ec2e274df979657`  
+**Branch tip at audit start (log-only):** `24b737dfb02db983acd94579e79c13989ace39a6`  
 **Latest revision with all three desktop workflows green:** `34725df43b58df8b579f84d2590a9bdda203fd8b`  
 **Last implementation-code revision (runtime/task/grader unchanged since):** `319fdc21d4cb38cb4fb3bcf788bb9de66b09a6a8`  
 **Fork master HEAD:** `5072b78260d6dfe16f28a479ae83db4ef5c86bce`  
 **Canonical upstream master HEAD:** `a03a36613feab18689d22b19243d8787d65f341d`  
-**Comparison at audit-start branch tip:** 234 commits ahead of fork master (0 behind); diverged from upstream (234 ahead / 19 behind).
+**Comparison at audit-start branch tip:** 236 commits ahead of fork master (0 behind); diverged from upstream (236 ahead / 19 behind).
 **Canonical upstream:** [antgroup/Agent3Sigma-Canary](https://github.com/antgroup/Agent3Sigma-Canary)
 
 This file is a public, technical summary of the desktop/UI-agent feasibility work. It intentionally excludes private correspondence and personal workflow notes.
@@ -387,3 +387,24 @@ The local provider uses a scripted plan and Tesseract OCR. These runs validate s
 - Unresolved: maintainer preference for bounded export versus task-scoped bind mount/lifecycle hook; autonomous visual grounding and live-model validation; a genuine agent/GUI isolation boundary; and the 19-commit upstream delta. The fixture runs as container root, so it is not a hostile-agent security boundary. Reputational guard: do not claim autonomous vision, live-model success, or security isolation; do not propose the branch wholesale; do not create a second issue or add a comment merely to create activity.
 
 - Highest-value next step: keep issue #2 as the single public discussion and wait for maintainer feedback. If maintainers choose a handoff contract, isolate the smallest compatible implementation against current upstream and rerun the compatibility workflow before considering a focused draft PR. Do not add security fault injection before the trust boundary is redesigned and validated.
+
+
+## Scheduled research audit — 2026-11-18 19:55 IST
+
+- Rechecked repository refs: canonical upstream `master` remains `a03a36613feab18689d22b19243d8787d65f341d`; fork `master` remains `5072b78260d6dfe16f28a479ae83db4ef5c86bce`; `research/desktop-ui-baseline` is `24b737dfb02db983acd94579e79c13989ace39a6`. The branch is 236 commits ahead of fork master (0 behind) and diverged from upstream (236 ahead / 19 behind). The fork and branch are publicly readable; this is not a GitHub-private branch.
+
+- Re-read upstream README, workflow README, task-format, pre-setup, and evaluation-environment documentation; traced `TaskLoader`, task validation, deferred `run_command` setup, Docker lifecycle, OpenClaw transcript export, and automated grading in `scripts/lib_tasks.py`, `scripts/lib_task_validation.py`, `scripts/lib_agent.py`, `scripts/lib_docker.py`, `scripts/lib_grading.py`, and `scripts/benchmark.py`. The upstream lifecycle still stops Docker before host-side `grade_task()`; it exposes low-level bind mounts and transcript export, but no task-scoped grader-artifact handoff contract.
+
+- Confirmed the compatibility workflow does not depend on the fork-only `desktop_baseline` suite selector: it overlays only the task/fixture onto a fresh upstream checkout and selects `task_9000_desktop_notes_gui` through upstream's existing task-ID-prefix selector. Upstream's `required_toolset` validator still recognizes only `safety_research`; a first-class desktop capability/image gate remains an unresolved future interface question, not part of issue #2.
+
+- Re-read the desktop task grader, Xvfb/Tk fixture, `desktopctl`, Docker image, reference controller, local OpenClaw provider, and both artifact-handoff wrappers. The task uses real X11 screenshots (`scrot`) and mouse/keyboard events (`xdotool`); the grader correlates tool calls with successful results, validates 800x600 PNG payloads and ordering, restricts the GUI command surface, and checks exact persisted state plus one Save callback. The reference controller and local provider use scripted plans with Tesseract OCR. This validates deterministic GUI/tool-loop/transcript/grading integration, not autonomous visual reasoning or live-model quality. The container runs as root and is not an agent/GUI security boundary.
+
+- Fresh upstream inventory: issue [#2](https://github.com/antgroup/Agent3Sigma-Canary/issues/2) remains open with zero comments and no maintainer response. It remains the only issue authored by `UnknownGod2011`; searches found no issue/PR comments by that account and no PR authored by it. PR [#1](https://github.com/antgroup/Agent3Sigma-Canary/pull/1) is merged; PRs [#3](https://github.com/antgroup/Agent3Sigma-Canary/pull/3) and [#4](https://github.com/antgroup/Agent3Sigma-Canary/pull/4) are open Dependabot updates with no comments. The fork has no issues or PRs. Fresh upstream code searches for `Xvfb`, `xdotool`, `pyautogui`, and `desktopctl` returned no matches.
+
+- Rechecked the latest relevant GitHub Actions runs on implementation revision `34725df43b58df8b579f84d2590a9bdda203fd8b`: desktop smoke [run 44040118861](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/44040118861), reference lifecycle [run 44040118871](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/44040118871), and current-upstream compatibility [run 44040118963](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/44040118963) all report `completed/success`. Later branch commits change only this research log; the implementation and tests remain unchanged since the green revision. The optional Gemini/live-model path is opt-in and has not been validated. No local Docker/test run was possible because Docker is not installed in this execution environment.
+
+- Implementation: no runtime, task, grader, image, or test change was justified. The two handoff prototypes, no-copyback controls, and upstream compatibility evidence already establish the deterministic integration milestone; issue #2 is awaiting maintainer preference. No upstream issue, comment, or PR was created or edited. This entry is a technical-log-only update; no implementation commit or test run was made.
+
+- Unresolved: maintainer preference for bounded pre-teardown export versus task-scoped bind mount/lifecycle hook; a future desktop capability/image gate; autonomous visual grounding/live-model validation; and a genuine agent/GUI isolation boundary. Reputational guard: do not propose this 236-commit / 19-commits-behind branch wholesale, do not add a second issue or comment merely to create activity, and do not claim autonomous vision, live-model success, or security isolation.
+
+- Highest-value next step: keep issue #2 as the single public design discussion and wait for maintainer architectural feedback. If maintainers select a handoff contract, isolate only the minimal compatible change against current upstream and rerun the compatibility workflow before considering a focused draft PR. Do not introduce security fault injection before the trust boundary is reviewed.

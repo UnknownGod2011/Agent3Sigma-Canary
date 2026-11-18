@@ -1,13 +1,13 @@
 # AgentCanary Desktop/UI Research Log
 
-**Updated:** 2026-11-18 10:57 IST
+**Updated:** 2026-11-18 14:59 IST
 **Research branch:** `research/desktop-ui-baseline`  
-**Branch tip at audit start (log-only):** `b593b6da6ecc20403ecae8619e02c62dface321d`  
+**Branch tip at audit start (log-only):** `7d927f3a8a4d7814e30f32192ec2e274df979657`  
 **Latest revision with all three desktop workflows green:** `34725df43b58df8b579f84d2590a9bdda203fd8b`  
 **Last implementation-code revision (runtime/task/grader unchanged since):** `319fdc21d4cb38cb4fb3bcf788bb9de66b09a6a8`  
 **Fork master HEAD:** `5072b78260d6dfe16f28a479ae83db4ef5c86bce`  
 **Canonical upstream master HEAD:** `a03a36613feab18689d22b19243d8787d65f341d`  
-**Comparison at audit-start branch tip:** 233 commits ahead of fork master (0 behind); diverged from upstream (233 ahead / 19 behind).
+**Comparison at audit-start branch tip:** 234 commits ahead of fork master (0 behind); diverged from upstream (234 ahead / 19 behind).
 **Canonical upstream:** [antgroup/Agent3Sigma-Canary](https://github.com/antgroup/Agent3Sigma-Canary)
 
 This file is a public, technical summary of the desktop/UI-agent feasibility work. It intentionally excludes private correspondence and personal workflow notes.
@@ -339,3 +339,26 @@ The local provider uses a scripted plan and Tesseract OCR. These runs validate s
 - Unresolved/blockers: maintainer preference for bounded pre-teardown `docker exec` export versus task-scoped bind mount/lifecycle hook; live-model visual grounding; a genuine agent/GUI isolation boundary; and access to the specified private Google Doc ledger (no Google Drive/Docs connector is exposed, and Library searches by exact title and document ID returned no match). This public log is only a technical fallback, not a substitute for that private ledger.
 - Reputational guard: keep issue #2 as the sole public design discussion; do not add a follow-up comment merely to create activity, do not propose this 233-commit / 19-commits-behind branch wholesale, and do not claim autonomous visual reasoning, live-model success, or security isolation.
 - Highest-value next step: wait for maintainer architectural feedback on issue #2. If a maintainer selects a handoff interface, isolate only the minimal compatible change against current upstream and rerun the compatibility workflow before considering a focused draft PR. Do not add security fault injection before the baseline trust boundary is reviewed.
+
+
+## Scheduled research audit — 2026-11-18 14:59 IST
+
+- Rechecked refs: upstream `master` remains `a03a36613feab18689d22b19243d8787d65f341d`; fork `master` remains `5072b78260d6dfe16f28a479ae83db4ef5c86bce`; `research/desktop-ui-baseline` is `7d927f3a8a4d7814e30f32192ec2e274df979657`. The branch is 234 commits ahead of fork master and 19 commits behind upstream. The latest branch commits since the last implementation revision remain research-log-only; the desktop runtime, task, grader, and workflows have not changed since the green implementation revision `34725df43b58df8b579f84d2590a9bdda203fd8b`.
+
+- Re-read the upstream README and task-format, pre-setup, evaluation-environment, trajectory, and run-validity documentation. Re-traced the current upstream lifecycle in code: `TaskLoader` parses task frontmatter; `benchmark.py` starts Docker with low-level `extra_mounts`; `lib_agent._run_deferred_pre_setup_commands()` runs deferred task setup after workspace delivery; `execute_openclaw_task()` invokes OpenClaw and exports session transcripts; `benchmark.py` stops the container before host-side `grade_task()`. Upstream already has low-level bind mounts and transcript export, but no task-scoped grader-artifact declaration/handoff contract. The compatibility workflow overlays only the desktop fixture onto a fresh current-upstream checkout; it does not rebase or validate the 234-commit research branch wholesale.
+
+- Re-read the task, Xvfb/Tk fixture, `desktopctl`, OCR localizer, reference controller, and both artifact-handoff adapters. The fixture is a genuine 800x600 X11 desktop: `desktopctl observe` captures with `scrot`, while click/type/key operations call `xdotool`; the evaluated OpenClaw path receives image-bearing `read` results and the grader correlates calls with successful results, validates PNG payloads and event order, restricts the GUI command surface, and checks the final state plus exactly one Save callback. The reference controller and local provider use a scripted plan with Tesseract OCR, so this is deterministic GUI/runner/transcript/grading integration evidence, not autonomous visual reasoning or live-model-quality evidence. The container runs as root; the fixture is not an agent/GUI security boundary.
+
+- The two handoff experiments remain distinct: bounded allowlisted `docker exec` export before teardown, and a task-scoped writable bind mount read from the host after teardown. The existing negative controls distinguish GUI execution from host-side grader visibility. A separate upstream capability declaration such as `required_toolset: desktop` is still unsupported by the current validator; the prototype instead uses a task-specific X11/window preflight because generic `run_command` setup failures are best-effort. This is a potential future interface question, not a reason to broaden issue #2 now.
+
+- Fresh public-history and duplicate check: issue [#2](https://github.com/antgroup/Agent3Sigma-Canary/issues/2) remains open with zero comments and no maintainer response. It is the only upstream issue authored by `UnknownGod2011`; no PR or issue/PR comment by that account was found in either repository. Upstream PR [#1](https://github.com/antgroup/Agent3Sigma-Canary/pull/1) remains merged; PRs [#3](https://github.com/antgroup/Agent3Sigma-Canary/pull/3) and [#4](https://github.com/antgroup/Agent3Sigma-Canary/pull/4) are open Dependabot updates with no discussion comments. Targeted current-upstream code searches for `Xvfb`, `xdotool`, `pyautogui`, `desktopctl`, and `desktop_baseline` returned zero matches. No duplicate desktop GUI runtime or maintainer feedback was observed.
+
+- Rechecked the latest relevant GitHub Actions runs on implementation revision `34725df`: desktop smoke [run 44040118861](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/44040118861), reference lifecycle [run 44040118871](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/44040118871), and current-upstream compatibility [run 44040118963](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/44040118963) all report `completed/success`. The optional live Gemini job was skipped by explicit opt-in; no live-model result is claimed. No local Docker tests ran: Docker is not installed in this execution environment, and a public Git clone attempt failed because the container could not resolve `github.com`. The available evidence is the completed GitHub Actions runs, not a local rerun.
+
+- Private recovery limitation: no Google Drive/Docs connector is exposed in this session, and the Library search for the named private ledger/document ID returned no match. This technical research log is only a fallback record and is not a substitute for the private contribution ledger.
+
+- Implementation: no runtime/task/grader change was justified. The baseline already has current-upstream CI evidence, issue #2 is awaiting architectural feedback, and no new actionable defect was established. No implementation commit or local test was made. This entry updates only the research log; no upstream issue, comment, or PR was created or edited.
+
+- Unresolved: maintainer preference for bounded pre-teardown export versus task-scoped bind mount/lifecycle hook; a future task/image capability-gating interface; autonomous visual grounding; and a genuine agent/GUI isolation boundary. Reputational guard: keep issue #2 as the sole public design discussion, do not add a comment merely to create activity, do not propose the 234-commit / 19-commits-behind branch wholesale, and do not claim autonomous visual reasoning, live-model success, or security isolation.
+
+- Highest-value next step: wait for maintainer architectural feedback on issue #2. If maintainers choose a handoff interface, extract only the minimal compatible change against current upstream and rerun the compatibility workflow before considering a focused draft PR. Do not open a second issue or add security fault injection before the baseline trust boundary is reviewed.

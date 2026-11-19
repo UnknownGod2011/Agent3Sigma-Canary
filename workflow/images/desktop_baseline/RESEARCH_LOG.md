@@ -620,7 +620,7 @@ The local provider uses a scripted plan and Tesseract OCR. These runs validate s
 
 ## Scheduled research audit — 2026-11-19 14:54 IST
 
-- Ref synchronization: canonical upstream `master` = `a03a36613feab18689d22b19243d8787d65f341d`; fork `master` = `5072b78260d6dfe16f28a479ae83db4ef5c86bce`; research branch = `864a15e98d3c270f87a205657198fe8fa5376740`. GitHub compare reports the branch 248 commits ahead of fork master and 248 ahead / 19 behind current upstream. The research branch and fork are publicly readable. Since the previous audit tip `87e54760bc79fcbba80a31e971ffdde5b51c80bf`, the only change is a documentation-only update to this research log (27 additions, 4 deletions); no task, runtime, image, grader, or workflow implementation changed.
+- Ref synchronization: canonical upstream `master` = `a03a36613feab18689d22b19243d8787d65f341d`; fork `master` = `5072b78260d6dfe16f28a479ae83db4ef5c86bce`; research branch = `864a15e98d3c270f87a205657198fe8fa5376740`. GitHub compare reports the branch 248 commits ahead of fork master and 248 ahead / 19 behind current upstream. The research branch and fork are publicly readable. Since the previous audit tip `864a15e98d3c270f87a205657198fe8fa5376740`, only this documentation-only research-log update was made; no task, runtime, image, grader, or workflow implementation changed.
 
 - The specified Google Doc contribution ledger remains unavailable in this session: no Google Drive/Docs connector is exposed, and exact title/document-ID searches in the available Library returned no matching document. This public technical log is a fallback only; it is not the private ledger and does not claim that the Doc was read or updated.
 

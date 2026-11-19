@@ -1,13 +1,13 @@
 # AgentCanary Desktop/UI Research Log
 
-**Updated:** 2026-11-19 10:58 IST
+**Updated:** 2026-11-19 11:55 IST
 **Research branch:** `research/desktop-ui-baseline`  
-**Branch tip at audit start:** `4dad0bca84d0a836f046447977a5f14e98bff01f`  
-**Latest revision with all three desktop workflows green:** `4dad0bca84d0a836f046447977a5f14e98bff01f`  
+**Branch tip at audit start:** `da838af50ae45a236381cc21d1cb87b6a6cdbd71`  
+**Latest revision with all three desktop workflows green:** `da838af50ae45a236381cc21d1cb87b6a6cdbd71`  
 **Last implementation-code revision (runtime/task/grader unchanged since):** `319fdc21d4cb38cb4fb3bcf788bb9de66b09a6a8`  
 **Fork master HEAD:** `5072b78260d6dfe16f28a479ae83db4ef5c86bce`  
 **Canonical upstream master HEAD:** `a03a36613feab18689d22b19243d8787d65f341d`  
-**Comparison at audit-start branch tip:** 245 commits ahead of fork master (0 behind); diverged from upstream (245 ahead / 19 behind upstream).  
+**Comparison at audit-start branch tip:** 246 commits ahead of fork master (0 behind); diverged from upstream (246 ahead / 19 behind upstream).  
 **Canonical upstream:** [antgroup/Agent3Sigma-Canary](https://github.com/antgroup/Agent3Sigma-Canary)
 
 This file is a public, technical summary of the desktop/UI-agent feasibility work. It intentionally excludes private correspondence and personal workflow notes.
@@ -564,3 +564,32 @@ The local provider uses a scripted plan and Tesseract OCR. These runs validate s
 - Unresolved: maintainer preference for artifact handoff; whether desktop image/toolset capability and suite isolation should become first-class upstream interfaces; generic pre-setup failure semantics; live-model visual grounding; and a genuine agent/GUI isolation boundary. Reputational guard: do not claim autonomous vision, live-model success, or security isolation; do not treat the scripted provider as a model benchmark; do not propose the 245-commit / 19-commits-behind branch wholesale; do not add a second issue/comment or security fault injection merely to create activity.
 
 - Highest-value next step: keep issue #2 as the sole public design discussion and wait for maintainer architectural feedback. If maintainers select a handoff contract, extract only the smallest compatible implementation against then-current upstream, then separately port and test desktop image/toolset gating and suite selection against the current `_select_tasks()` architecture. Do not introduce security fault injection before the desktop agent/GUI trust boundary is explicitly redesigned and validated.
+
+
+## Scheduled research audit — 2026-11-19 11:55 IST
+
+- Ref synchronization at audit start: canonical upstream `master` = `a03a36613feab18689d22b19243d8787d65f341d`; fork `master` = `5072b78260d6dfe16f28a479ae83db4ef5c86bce`; research branch = `da838af50ae45a236381cc21d1cb87b6a6cdbd71`. GitHub compare reports the research branch 246 commits ahead of fork master / 0 behind and 246 ahead / 19 behind upstream. The fork and branch are publicly readable; this is not an access-controlled private branch.
+
+- The specified Google Doc ledger was not available through this session: no Google Drive/Docs connector is exposed and exact title/document-ID searches in the available Library returned no match. This repository log is a technical fallback only; it does not claim that the Google Doc was read or updated.
+
+- Rechecked upstream README, workflow/task/pre-setup documentation, current task loader, benchmark selector, Docker lifecycle, agent invocation, transcript export and host grading. The current upstream path remains `TaskLoader.load_task()` -> `scripts/benchmark.py::_select_tasks()` -> `scripts/lib_docker.py::start(extra_mounts=...)` -> workspace delivery and deferred `pre_setup.run_command` -> `execute_openclaw_task()` / transcript export -> container stop -> host-side `grade_task()`. The 19 commits after fork master include the merged NARA-Bench/native-runtime and composable-image work (upstream PR #1); no desktop-native task, image, or toolset support was found in that upstream delta.
+
+- Current upstream has generic low-level bind mounts, so the gap is not an absence of Docker mount capability. It still lacks a task-frontmatter/lifecycle contract for task-scoped grader artifacts. Its `validate_task_toolsets()` accepts `safety_research` but rejects `desktop`; its broad `all`, `automated-only`, and `non-security` selectors include an added desktop task unless explicitly gated/excluded; path-based `--suite desktop_baseline/` or `--suite tasks/desktop_baseline/` works. Generic `run_command` pre-setup failures are best-effort, so the desktop adapter's fatal X11/window preflight remains necessary. The fork's legacy suite alias/default exclusions are not a direct drop-in for the newer upstream `_select_tasks()` path.
+
+- Latest branch-tip GitHub Actions checks all completed successfully on `da838af`: [desktop smoke 44466206432](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/44466206432), [reference lifecycle 44466206556](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/44466206556), and [current-upstream compatibility 44466206547](https://github.com/UnknownGod2011/Agent3Sigma-Canary/actions/runs/44466206547). The optional live-model job was skipped by explicit opt-in; no live-model run or quality result is claimed.
+
+- Downloaded and inspected the reference-lifecycle artifact from run 44466206556. It contains four positive runs (two bounded-export reference runs and two task-scoped bind-mount reference runs), each scoring 1.0/1.0, plus two expected negative controls (no-copyback and no-bind-mount), each scoring 0.0/1.0. The four positive runs share final-state SHA-256 `672d3c99f9a438087ce94dc990e97ee25b81e963fa471432739ad5bab49d1ca9` and GUI-action SHA-256 `23904b0347316872288d37192c18c7b0e50b610fc665c0399978036c15700900`; repeated screenshot hashes match. The manifest records branch commit `da838af` and the task-definition hash.
+
+- Downloaded and inspected the current-upstream compatibility artifact from run 44466206547. It records upstream master SHA `a03a36613feab18689d22b19243d8787d65f341d`; two reference-controller runs and two deterministic local OpenClaw-stub runs score 1.0/1.0, while no-bind/no-copyback controls score 0.0/1.0. The reference and stub repeat pairs match final-state, GUI-action, and screenshot hashes. The reference action hash is `23904b0347316872288d37192c18c7b0e50b610fc665c0399978036c15700900`; the local-stub action hash is `031ab048f3b23cf4bd996a2718ecedca604306e06c58b59c1ecd48b5ddec927a`; both share final-state hash `672d3c99f9a438087ce94dc990e97ee25b81e963fa471432739ad5bab49d1ca9`. The local provider is a scripted plan using Tesseract OCR, not autonomous visual reasoning or a live model.
+
+- Inspected the retained 800x600 PNGs and transcript from the upstream compatibility artifact. They show the actual Tk Notes window before and after editing. The recorded sequence is screenshot observation -> image-bearing `read` result -> GUI click/keyboard/text input -> second screenshot observation -> image-bearing `read` result -> one Save click. The task grader returned 1.0/1.0. This verifies a real X11 GUI observation/action path and the existing transcript/grading lifecycle for a deterministic reference path; it does not show that a live model semantically understood the pixels.
+
+- Local checks: this execution environment has Git but no Docker binary and no checked-out repository, so no local Docker, GUI, unit, or integration test was run. The exact checks reported above are remote GitHub Actions results, not locally executed tests.
+
+- Public-history check: upstream issue [#2](https://github.com/antgroup/Agent3Sigma-Canary/issues/2), authored by `UnknownGod2011`, remains open with zero comments and no maintainer response. No duplicate desktop/UI issue or PR was found. Upstream PR [#1](https://github.com/antgroup/Agent3Sigma-Canary/pull/1) is merged; PRs [#3](https://github.com/antgroup/Agent3Sigma-Canary/pull/3) and [#4](https://github.com/antgroup/Agent3Sigma-Canary/pull/4) are unrelated Dependabot updates. No PR or comment authored by `UnknownGod2011` was found. No issue, comment, or PR was created or edited in this audit.
+
+- Implementation decision: no runtime, task, grader, or upstream API change is justified this run. The existing implementation already has reproducible real-GUI reference evidence and current-upstream compatibility evidence; the next design choice is still the host-side artifact-handoff contract. No implementation code changed. This audit changes only this technical research log.
+
+- Unresolved: maintainer preference for bounded pre-teardown export versus task-scoped bind mount/lifecycle handoff; whether desktop image/toolset gating and default-suite exclusion should become first-class upstream interfaces; fail-fast semantics for GUI pre-setup; live-model visual grounding; and a genuine agent/GUI isolation boundary. Reputational guard: do not claim autonomous visual reasoning, live-model quality, or security isolation; do not describe the public research branch as private; do not propose the 246-commit / 19-commits-behind branch wholesale; do not add another issue/comment or security fault injection merely to create activity.
+
+- Highest-value next step: keep issue #2 as the sole public design discussion and wait for maintainer architectural feedback. If maintainers point to existing `extra_mounts`, clarify that mount creation already exists but task-scoped artifact capture and host-side post-run handoff are not first-class. Only after agreeing on the handoff boundary should a minimal extraction be prepared against current upstream, with explicit desktop image/toolset gating, suite isolation, and preflight semantics tested separately. A live-model run remains an explicit opt-in and should not be triggered without authorization for configured credentials and possible provider cost.

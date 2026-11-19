@@ -150,10 +150,10 @@ jobs:
           for attempt in first repeat; do
             results_dir="$RUNNER_TEMP/upstream-reference-$attempt"
             rm -rf "$results_dir"
+              # Exercise upstream's path-aware directory selector through the full lifecycle.
             DOCKER_IMAGE=agentcanary-desktop-upstream-reference uv run python \
               workflow/images/desktop_baseline/run_reference_benchmark.py \
               --model reference/desktop \
-              # Exercise upstream's path-aware directory selector through the full lifecycle.
               --suite tasks/desktop_baseline/ \
               --docker \
               --timeout-multiplier 1.0 \

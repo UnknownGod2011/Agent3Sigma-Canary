@@ -153,7 +153,8 @@ jobs:
             DOCKER_IMAGE=agentcanary-desktop-upstream-reference uv run python \
               workflow/images/desktop_baseline/run_reference_benchmark.py \
               --model reference/desktop \
-              --suite task_9000_desktop_notes_gui \
+              # Exercise upstream's path-aware directory selector through the full lifecycle.
+              --suite tasks/desktop_baseline/ \
               --docker \
               --timeout-multiplier 1.0 \
               --output-dir "$results_dir" \

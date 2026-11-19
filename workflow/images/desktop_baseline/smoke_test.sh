@@ -214,4 +214,6 @@ PY
 desktopctl observe "$AFTER" >/dev/null
 [[ -s "$AFTER" ]] || { echo "missing/empty post-action screenshot" >&2; exit 1; }
 
+/usr/local/bin/desktop-baseline-nonroot-smoke-test
+
 echo "desktop baseline smoke test passed"

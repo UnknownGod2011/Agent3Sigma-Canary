@@ -26,6 +26,7 @@ fi
 
 cp "${IMAGES_DIR}/Dockerfile" "${BUILD_DIR}/Dockerfile"
 cp "${IMAGES_DIR}/smoke_test.sh" "${BUILD_DIR}/smoke_test.sh"
+cp "${IMAGES_DIR}/nonroot_gui_boundary_smoke.sh" "${BUILD_DIR}/nonroot_gui_boundary_smoke.sh"
 mkdir -p "${BUILD_DIR}/desktop"
 cp "${IMAGES_DIR}/desktop/notes_ui.py" "${BUILD_DIR}/desktop/notes_ui.py"
 cp "${IMAGES_DIR}/desktop/desktop_ocr.py" "${BUILD_DIR}/desktop/desktop_ocr.py"

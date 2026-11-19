@@ -22,6 +22,8 @@ RUN apt-get update && apt-get install -y \
     xvfb \
     xdotool \
     x11-utils \
+    x11-xserver-utils \
+    util-linux \
     scrot \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
@@ -47,7 +49,11 @@ COPY desktop/desktop_model_stub.py /opt/agentcanary-desktop/desktop_model_stub.p
 COPY desktop/desktop_baseline_entrypoint.sh /usr/local/bin/desktop-baseline-entrypoint.sh
 COPY desktop/desktopctl /usr/local/bin/desktopctl
 COPY smoke_test.sh /usr/local/bin/desktop-baseline-smoke-test
-RUN chmod +x /opt/agentcanary-desktop/notes_ui.py /opt/agentcanary-desktop/desktop_ocr.py /opt/agentcanary-desktop/desktop_model_stub.py /usr/local/bin/desktop-baseline-entrypoint.sh /usr/local/bin/desktopctl /usr/local/bin/desktop-baseline-smoke-test
+COPY nonroot_gui_boundary_smoke.sh /usr/local/bin/desktop-baseline-nonroot-smoke-test
+RUN chmod 600 /opt/agentcanary-desktop/notes_ui.py \
+    && chmod +x /opt/agentcanary-desktop/desktop_ocr.py /opt/agentcanary-desktop/desktop_model_stub.py \
+        /usr/local/bin/desktop-baseline-entrypoint.sh /usr/local/bin/desktopctl \
+        /usr/local/bin/desktop-baseline-smoke-test /usr/local/bin/desktop-baseline-nonroot-smoke-test
 
 ENV DISPLAY=:99
 ENV DESKTOP_BASELINE_STATE=/tmp/agentcanary-desktop/desktop_baseline_state.json

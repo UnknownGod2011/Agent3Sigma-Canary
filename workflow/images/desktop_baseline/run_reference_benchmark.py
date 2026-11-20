@@ -25,7 +25,8 @@ import lib_docker as docker  # noqa: E402
 import safe_container_export as safe_export  # noqa: E402
 
 _original_stop = docker.stop
-_original_run_agent_cmd = docker.run_agent_cmd
+_original_run_cmd = docker.run_cmd
+_original_run_agent_cmd = getattr(docker, "run_agent_cmd", None)
 _original_execute_openclaw_task = benchmark.execute_openclaw_task
 _original_run_deferred_pre_setup_commands = lib_agent._run_deferred_pre_setup_commands
 DESKTOP_TASK_ID = "task_9000_desktop_notes_gui"
@@ -68,14 +69,25 @@ def _extract_window_origin(argv: list[str]) -> tuple[int, int] | None:
     return x, y
 
 
-def _run_agent_cmd_with_window_origin(args, *, timeout: float, cwd=None, env=None):
-    """Move the already-prepared fixture immediately before the agent starts."""
+def _is_openclaw_agent_command(args) -> bool:
+    """Match only target-agent invocations, not setup/agent-management CLI calls."""
+    return (
+        isinstance(args, (list, tuple))
+        and len(args) >= 2
+        and Path(str(args[0])).name == "openclaw"
+        and args[1] == "agent"
+    )
+
+
+def _move_window_before_agent() -> None:
+    """Move the prepared Tk window after preflight but before its first agent call."""
     origin = _window_origin_override
-    if origin is not None:
-        if not docker.is_active():
-            raise RuntimeError("--window-origin requires an active desktop Docker container")
-        x, y = origin
-        move_script = r"""
+    if origin is None:
+        return
+    if not docker.is_active():
+        raise RuntimeError("--window-origin requires an active desktop Docker container")
+    x, y = origin
+    move_script = r"""
 import subprocess
 import sys
 import time
@@ -111,27 +123,48 @@ if fields.get("X") != str(x) or fields.get("Y") != str(y):
     raise SystemExit(f"Notes window moved to unexpected geometry: {geometry.stdout.strip()}")
 print(f"verified Notes window origin ({x}, {y})")
 """
-        try:
-            probe = docker.run_cmd(["python3", "-c", move_script, str(x), str(y)], timeout=10)
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("desktop window-origin override timed out before agent invocation") from exc
-        if probe.returncode != 0:
-            detail = (probe.stderr or probe.stdout or "").strip()
-            raise RuntimeError(f"desktop window-origin override failed: {detail}")
-        print(f"Desktop window moved to ({x}, {y}) before OpenClaw invocation", flush=True)
+    try:
+        probe = _original_run_cmd(["python3", "-c", move_script, str(x), str(y)], timeout=10)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("desktop window-origin override timed out before agent invocation") from exc
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout or "").strip()
+        raise RuntimeError(f"desktop window-origin override failed: {detail}")
+    print(f"Desktop window moved to ({x}, {y}) before OpenClaw invocation", flush=True)
 
+
+def _run_cmd_with_window_origin(args, **kwargs):
+    """Compatibility path for the pre-run_agent_cmd fork runner."""
+    if _is_openclaw_agent_command(args):
+        _move_window_before_agent()
+    return _original_run_cmd(args, **kwargs)
+
+
+def _run_agent_cmd_with_window_origin(args, *, timeout: float, cwd=None, env=None):
+    """Current-upstream path: move the fixture immediately before agent execution."""
+    _move_window_before_agent()
+    if _original_run_agent_cmd is None:
+        raise RuntimeError("lib_docker.run_agent_cmd is unavailable in this runner")
     return _original_run_agent_cmd(args, timeout=timeout, cwd=cwd, env=env)
 
 
 def _run_benchmark() -> None:
     """Install the optional origin probe only for this benchmark invocation."""
-    original = docker.run_agent_cmd
+    original_run_cmd = docker.run_cmd
+    original_run_agent_cmd = getattr(docker, "run_agent_cmd", None)
     if _window_origin_override is not None:
-        docker.run_agent_cmd = _run_agent_cmd_with_window_origin
+        if callable(original_run_agent_cmd):
+            docker.run_agent_cmd = _run_agent_cmd_with_window_origin
+        else:
+            # The fork's pre-Native-Runner adapter invokes OpenClaw through
+            # run_cmd directly; intercept only the target-agent command.
+            docker.run_cmd = _run_cmd_with_window_origin
     try:
         benchmark.main()
     finally:
-        docker.run_agent_cmd = original
+        docker.run_cmd = original_run_cmd
+        if original_run_agent_cmd is not None:
+            docker.run_agent_cmd = original_run_agent_cmd
 
 
 def _run_deferred_pre_setup_commands_with_desktop_preflight(task, workspace) -> None:

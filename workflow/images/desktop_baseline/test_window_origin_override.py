@@ -27,6 +27,10 @@ def main() -> int:
     assert runner._extract_window_origin(equals_form) == (160, 240)
     assert equals_form == ["runner.py"]
     assert runner._extract_window_origin(["runner.py", "--docker"]) is None
+    assert runner._is_openclaw_agent_command(["openclaw", "agent", "--message", "task"])
+    assert runner._is_openclaw_agent_command(["/usr/local/bin/openclaw", "agent"])
+    assert not runner._is_openclaw_agent_command(["openclaw", "agents", "list"])
+    assert not runner._is_openclaw_agent_command(["openclaw", "config", "get"])
 
     _reject(["runner.py", "--window-origin"])
     _reject(["runner.py", "--window-origin", "40"])

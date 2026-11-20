@@ -55,6 +55,9 @@ jobs:
       - name: Run deterministic OpenClaw model-stub regression tests
         run: python workflow/images/desktop_baseline/test_desktop_model_stub.py
 
+      - name: Validate the optional alternate-window-origin runner flag
+        run: uv run python workflow/images/desktop_baseline/test_window_origin_override.py
+
       - name: Verify live-model job requires explicit opt-in
         run: python workflow/images/desktop_baseline/test_live_model_opt_in.py
 

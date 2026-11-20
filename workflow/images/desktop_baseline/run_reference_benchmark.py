@@ -25,10 +25,113 @@ import lib_docker as docker  # noqa: E402
 import safe_container_export as safe_export  # noqa: E402
 
 _original_stop = docker.stop
+_original_run_agent_cmd = docker.run_agent_cmd
 _original_execute_openclaw_task = benchmark.execute_openclaw_task
 _original_run_deferred_pre_setup_commands = lib_agent._run_deferred_pre_setup_commands
 DESKTOP_TASK_ID = "task_9000_desktop_notes_gui"
 _task_workspace_for_copyback: Path | None = None
+_window_origin_override: tuple[int, int] | None = None
+
+
+def _extract_window_origin(argv: list[str]) -> tuple[int, int] | None:
+    """Remove and validate an optional X,Y window-origin override.
+
+    The fixture is 640x360 on an 800x600 Xvfb display, so accepted origins
+    must keep the complete window visible. The default task setup remains
+    unchanged; the override is applied only after its normal preflight.
+    """
+    matches = [
+        index for index, value in enumerate(argv)
+        if value == "--window-origin" or value.startswith("--window-origin=")
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise SystemExit("--window-origin may be supplied only once")
+
+    index = matches[0]
+    token = argv[index]
+    if token == "--window-origin":
+        if index + 1 >= len(argv):
+            raise SystemExit("--window-origin requires X,Y")
+        raw = argv[index + 1]
+        del argv[index:index + 2]
+    else:
+        raw = token.partition("=")[2]
+        del argv[index]
+
+    if not re.fullmatch(r"[0-9]+,[0-9]+", raw):
+        raise SystemExit("--window-origin must be two non-negative integers: X,Y")
+    x, y = (int(value) for value in raw.split(","))
+    if x > 160 or y > 240:
+        raise SystemExit("--window-origin must keep the 640x360 window inside the 800x600 display")
+    return x, y
+
+
+def _run_agent_cmd_with_window_origin(args, *, timeout: float, cwd=None, env=None):
+    """Move the already-prepared fixture immediately before the agent starts."""
+    origin = _window_origin_override
+    if origin is not None:
+        if not docker.is_active():
+            raise RuntimeError("--window-origin requires an active desktop Docker container")
+        x, y = origin
+        move_script = r\'''
+import subprocess
+import sys
+import time
+
+x, y = map(int, sys.argv[1:])
+search = subprocess.run(
+    ["xdotool", "search", "--onlyvisible", "--name", "^AgentCanary Desktop Baseline$"],
+    capture_output=True, text=True, check=False, timeout=5,
+)
+if search.returncode != 0:
+    raise SystemExit(f"could not find the visible Notes window: {search.stderr.strip()}")
+window_ids = search.stdout.split()
+if len(window_ids) != 1:
+    raise SystemExit(f"expected exactly one visible Notes window, found {window_ids!r}")
+window_id = window_ids[0]
+move = subprocess.run(
+    ["xdotool", "windowmove", window_id, str(x), str(y)],
+    capture_output=True, text=True, check=False, timeout=5,
+)
+if move.returncode != 0:
+    raise SystemExit(f"could not move Notes window: {move.stderr.strip()}")
+time.sleep(0.5)
+geometry = subprocess.run(
+    ["xdotool", "getwindowgeometry", "--shell", window_id],
+    capture_output=True, text=True, check=False, timeout=5,
+)
+if geometry.returncode != 0:
+    raise SystemExit(f"could not verify Notes window position: {geometry.stderr.strip()}")
+fields = dict(
+    line.split("=", 1) for line in geometry.stdout.splitlines() if "=" in line
+)
+if fields.get("X") != str(x) or fields.get("Y") != str(y):
+    raise SystemExit(f"Notes window moved to unexpected geometry: {geometry.stdout.strip()}")
+print(f"verified Notes window origin ({x}, {y})")
+\'''
+        try:
+            probe = docker.run_cmd(["python3", "-c", move_script, str(x), str(y)], timeout=10)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("desktop window-origin override timed out before agent invocation") from exc
+        if probe.returncode != 0:
+            detail = (probe.stderr or probe.stdout or "").strip()
+            raise RuntimeError(f"desktop window-origin override failed: {detail}")
+        print(f"Desktop window moved to ({x}, {y}) before OpenClaw invocation", flush=True)
+
+    return _original_run_agent_cmd(args, timeout=timeout, cwd=cwd, env=env)
+
+
+def _run_benchmark() -> None:
+    """Install the optional origin probe only for this benchmark invocation."""
+    original = docker.run_agent_cmd
+    if _window_origin_override is not None:
+        docker.run_agent_cmd = _run_agent_cmd_with_window_origin
+    try:
+        benchmark.main()
+    finally:
+        docker.run_agent_cmd = original
 
 
 def _run_deferred_pre_setup_commands_with_desktop_preflight(task, workspace) -> None:
@@ -220,6 +323,16 @@ def _stop_with_artifact_export() -> None:
 
 
 def main() -> None:
+    global _window_origin_override
+    _window_origin_override = _extract_window_origin(sys.argv)
+    if _window_origin_override is not None:
+        if "--docker" not in sys.argv:
+            raise SystemExit("--window-origin requires --docker")
+        suite_index = sys.argv.index("--suite") if "--suite" in sys.argv else -1
+        suite = sys.argv[suite_index + 1] if suite_index >= 0 and suite_index + 1 < len(sys.argv) else None
+        if suite not in {DESKTOP_TASK_ID, "tasks/desktop_baseline", "tasks/desktop_baseline/"}:
+            raise SystemExit("--window-origin is supported only for the desktop baseline task/suite")
+
     # Negative control: run the same lifecycle without copyback. Optionally
     # prove the GUI fixture saved the expected state inside Docker immediately
     # before teardown, while leaving that state unavailable to host-side grading.
@@ -243,12 +356,12 @@ def main() -> None:
             )
         else:
             print("Running negative control without workspace copyback", flush=True)
-        benchmark.main()
+        _run_benchmark()
         return
 
     docker.stop = _stop_with_artifact_export
     benchmark.docker.stop = _stop_with_artifact_export
-    benchmark.main()
+    _run_benchmark()
 
 
 if __name__ == "__main__":

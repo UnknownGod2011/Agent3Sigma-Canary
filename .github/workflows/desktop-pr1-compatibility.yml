@@ -67,6 +67,7 @@ jobs:
           uv run python workflow/images/desktop_baseline/test_evidence_parser.py
           python workflow/images/desktop_baseline/test_model_attempt_classifier.py
           uv run python workflow/images/desktop_baseline/test_desktop_model_stub.py
+          uv run python workflow/images/desktop_baseline/test_window_origin_override.py
           python workflow/images/desktop_baseline/test_desktop_ocr.py
           uv run python workflow/images/desktop_baseline/test_desktop_runtime_preflight.py
           uv run python workflow/images/desktop_baseline/test_run_benchmark_preflight.py
@@ -330,6 +331,68 @@ jobs:
           PY
           done
           echo "Local-provider tool loop repeated on upstream master $UPSTREAM_MASTER_SHA; no external model provider was called."
+
+      - name: Verify screenshot-grounded OpenClaw clicks at a second window origin
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-master
+        run: |
+          set -euo pipefail
+          results_dir="$RUNNER_TEMP/upstream-openclaw-stub-moved-origin"
+          rm -rf "$results_dir"
+          DOCKER_IMAGE=agentcanary-desktop-upstream-openclaw-stub uv run python \
+            workflow/images/desktop_baseline/run_reference_benchmark.py \
+            --window-origin 40,40 \
+            --model desktop-stub/desktop-fixture \
+            --suite task_9000_desktop_notes_gui \
+            --docker \
+            --timeout-multiplier 1.0 \
+            --output-dir "$results_dir" \
+            --verbose
+          uv run python workflow/images/desktop_baseline/verify_benchmark.py "$results_dir"
+          python - "$RUNNER_TEMP/upstream-openclaw-stub-first" "$results_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          task_id = "task_9000_desktop_notes_gui"
+
+          def click_coordinates(root):
+              root = Path(root)
+              artifacts = list(root.glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+              assert len(artifacts) == 1, artifacts
+              data = json.loads(artifacts[0].read_text(encoding="utf-8"))
+              assert data.get("grading", {}).get("score") == 1.0, data.get("grading")
+              clicks = []
+              for event in data.get("transcript", []):
+                  if not isinstance(event, dict) or event.get("type") != "message":
+                      continue
+                  message = event.get("message", {})
+                  if message.get("role") != "assistant":
+                      continue
+                  for item in message.get("content", []):
+                      if not isinstance(item, dict) or item.get("type") != "toolCall":
+                          continue
+                      if item.get("name") != "exec":
+                          continue
+                      command = item.get("arguments", {}).get("command")
+                      if isinstance(command, str) and command.startswith("desktopctl click "):
+                          parts = command.split()
+                          assert len(parts) == 4, command
+                          x, y = int(parts[2]), int(parts[3])
+                          assert 0 <= x < 800 and 0 <= y < 600, command
+                          clicks.append((x, y))
+              assert len(clicks) == 2, clicks
+              return clicks
+
+          baseline = click_coordinates(sys.argv[1])
+          moved = click_coordinates(sys.argv[2])
+          for index, (before, after) in enumerate(zip(baseline, moved), start=1):
+              delta = (after[0] - before[0], after[1] - before[1])
+              assert abs(delta[0] + 100) <= 2 and abs(delta[1] + 80) <= 2, {
+                  "click": index, "baseline": before, "moved": after, "delta": delta
+              }
+          print("OpenClaw local-provider clicks followed the moved window by (-100, -80); both runs scored 1.0")
+          PY
 
       - name: Run task-scoped bind-mount reference lifecycle twice on upstream runner
         shell: bash

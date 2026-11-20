@@ -30,26 +30,26 @@ MODEL_ID = "desktop-fixture"
 API_KEY = "agentcanary-local-stub-key"
 
 TOOL_STEPS: tuple[tuple[str, dict[str, str] | None], ...] = (
-    ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/screen.png"}),
-    ("read", {"path": "/tmp/agentcanary-desktop/screen.png"}),
+    ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop-agent/screen.png"}),
+    ("read", {"path": "/tmp/agentcanary-desktop-agent/screen.png"}),
     ("exec", None),  # Screenshot-derived editor click.
     ("exec", {"command": "desktopctl key Home"}),
     ("exec", {"command": "desktopctl key shift+End"}),
     ("exec", {"command": "desktopctl type 'AgentCanary desktop baseline complete'"}),
-    ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/save.png"}),
-    ("read", {"path": "/tmp/agentcanary-desktop/save.png"}),
+    ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop-agent/save.png"}),
+    ("read", {"path": "/tmp/agentcanary-desktop-agent/save.png"}),
 )
 
 TARGET_TEXT = "AgentCanary desktop baseline complete"
 DYNAMIC_CLICK_STEPS = {2: "baseline note"}
 DYNAMIC_SAVE_STEPS = {8, 10, 12}
 DYNAMIC_REOBSERVE_PATHS = {
-    8: "/tmp/agentcanary-desktop/verify-1.png",
-    10: "/tmp/agentcanary-desktop/verify-2.png",
+    8: "/tmp/agentcanary-desktop-agent/verify-1.png",
+    10: "/tmp/agentcanary-desktop-agent/verify-2.png",
 }
 DYNAMIC_READ_PATHS = {
-    9: "/tmp/agentcanary-desktop/verify-1.png",
-    11: "/tmp/agentcanary-desktop/verify-2.png",
+    9: "/tmp/agentcanary-desktop-agent/verify-1.png",
+    11: "/tmp/agentcanary-desktop-agent/verify-2.png",
 }
 
 

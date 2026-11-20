@@ -124,13 +124,13 @@ def main() -> None:
     })
 
     static_expected = {
-        0: ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/screen.png"}),
-        1: ("read", {"path": "/tmp/agentcanary-desktop/screen.png"}),
+        0: ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop-agent/screen.png"}),
+        1: ("read", {"path": "/tmp/agentcanary-desktop-agent/screen.png"}),
         3: ("exec", {"command": "desktopctl key Home"}),
         4: ("exec", {"command": "desktopctl key shift+End"}),
         5: ("exec", {"command": "desktopctl type 'AgentCanary desktop baseline complete'"}),
-        6: ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/save.png"}),
-        7: ("read", {"path": "/tmp/agentcanary-desktop/save.png"}),
+        6: ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop-agent/save.png"}),
+        7: ("read", {"path": "/tmp/agentcanary-desktop-agent/save.png"}),
     }
     for step, expected in static_expected.items():
         assert _next_tool(completion_for_messages(_history(step), created=1)) == expected
@@ -156,24 +156,24 @@ def main() -> None:
         retry_one = completion_for_messages(second_history, created=1)
     assert _next_tool(retry_one) == (
         "exec",
-        {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-1.png"},
+        {"command": "desktopctl observe /tmp/agentcanary-desktop-agent/verify-1.png"},
     )
 
     retry_one_steps = list(TOOL_STEPS) + [
-        ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-1.png"}),
-        ("read", {"path": "/tmp/agentcanary-desktop/verify-1.png"}),
+        ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop-agent/verify-1.png"}),
+        ("read", {"path": "/tmp/agentcanary-desktop-agent/verify-1.png"}),
     ]
     retry_one_history = _history_for_steps(retry_one_steps, image_indices=(1, 7, 9))
     with patch.object(stub, "locate_text", side_effect=LookupError("target not visible")):
         retry_two = completion_for_messages(retry_one_history, created=1)
     assert _next_tool(retry_two) == (
         "exec",
-        {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-2.png"},
+        {"command": "desktopctl observe /tmp/agentcanary-desktop-agent/verify-2.png"},
     )
 
     retry_two_steps = retry_one_steps + [
-        ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-2.png"}),
-        ("read", {"path": "/tmp/agentcanary-desktop/verify-2.png"}),
+        ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop-agent/verify-2.png"}),
+        ("read", {"path": "/tmp/agentcanary-desktop-agent/verify-2.png"}),
     ]
     retry_two_history = _history_for_steps(retry_two_steps, image_indices=(1, 7, 9, 11))
     with patch.object(stub, "locate_text", side_effect=LookupError("target not visible")):
@@ -193,18 +193,18 @@ def main() -> None:
     locate_save.assert_called_once()
 
     observe_one_steps = list(TOOL_STEPS) + [
-        ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-1.png"}),
+        ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop-agent/verify-1.png"}),
     ]
     assert _next_tool(completion_for_messages(_history_for_steps(observe_one_steps), created=1)) == (
-        "read", {"path": "/tmp/agentcanary-desktop/verify-1.png"}
+        "read", {"path": "/tmp/agentcanary-desktop-agent/verify-1.png"}
     )
 
     observe_two_steps = retry_one_steps + [
-        ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop/verify-2.png"}),
+        ("exec", {"command": "desktopctl observe /tmp/agentcanary-desktop-agent/verify-2.png"}),
     ]
     assert _next_tool(completion_for_messages(
         _history_for_steps(observe_two_steps, image_indices=(1, 7, 9)), created=1
-    )) == ("read", {"path": "/tmp/agentcanary-desktop/verify-2.png"})
+    )) == ("read", {"path": "/tmp/agentcanary-desktop-agent/verify-2.png"})
 
     try:
         completion_for_messages(_history(8, image_indices=(1,)), created=1)
@@ -222,7 +222,7 @@ def main() -> None:
     ]
     unrelated_tool_image = _history(2, image_indices=())
     unrelated_tool_image[2]["content"] = [
-        {"type": "text", "text": "/tmp/agentcanary-desktop/screen.png"},
+        {"type": "text", "text": "/tmp/agentcanary-desktop-agent/screen.png"},
         {"type": "image_url", "image_url": {"url": _data_url()}},
     ]
     mismatched_tool_id = _history(2)
@@ -232,10 +232,10 @@ def main() -> None:
     duplicate_tool_result = _history(2)
     duplicate_tool_result.append(dict(duplicate_tool_result[4]))
     failed_observation = _history(2)
-    failed_observation[2]["content"] = "Command failed while capturing /tmp/agentcanary-desktop/screen.png"
+    failed_observation[2]["content"] = "Command failed while capturing /tmp/agentcanary-desktop-agent/screen.png"
     mismatched_read_path = _history(2)
     mismatched_read_path[3]["tool_calls"][0]["function"]["arguments"] = json.dumps({
-        "path": "/tmp/agentcanary-desktop/other.png"
+        "path": "/tmp/agentcanary-desktop-agent/other.png"
     })
     wrong_image_marker = _history(2)
     wrong_image_marker[5]["content"][0]["text"] = "Image(s) from tool result #2 (exec):"

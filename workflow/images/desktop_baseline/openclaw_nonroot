@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+node_uid="$(id -u node)"
+current_uid="$(id -u)"
+
+chown_workspace() {
+  local candidate="${1:-}"
+  [[ "$candidate" == /tmp/scry/* ]] || return 0
+  mkdir -p -- "$candidate"
+  local resolved
+  resolved="$(realpath -e -- "$candidate")"
+  case "$resolved" in
+    /tmp/scry/*) chown -R node:node -- "$resolved" ;;
+    *)
+      echo "desktop OpenClaw shim: refusing workspace outside /tmp/scry: $resolved" >&2
+      exit 126
+      ;;
+  esac
+}
+
+if [[ "$current_uid" == "0" ]]; then
+  args=("$@")
+  for ((i = 0; i < ${#args[@]} - 1; i++)); do
+    if [[ "${args[i]}" == "--workspace" ]]; then
+      chown_workspace "${args[i + 1]}"
+    fi
+  done
+
+  current_dir="$(pwd -P)"
+  chown_workspace "$current_dir"
+  install -d -o node -g node -m 0700 /tmp/agentcanary-desktop-agent
+
+  exec setpriv --reuid=node --regid=node --init-groups \
+    env HOME=/home/node USER=node LOGNAME=node DISPLAY="${DISPLAY:-:99}" \
+      DESKTOP_BASELINE_RUNTIME=/tmp/agentcanary-desktop-agent \
+      DESKTOP_BASELINE_REQUIRE_NONROOT=1 \
+    /usr/local/bin/openclaw-real "$@"
+fi
+
+if [[ "$current_uid" == "$node_uid" ]]; then
+  export HOME=/home/node USER=node LOGNAME=node
+  export DISPLAY="${DISPLAY:-:99}"
+  export DESKTOP_BASELINE_RUNTIME=/tmp/agentcanary-desktop-agent
+  export DESKTOP_BASELINE_REQUIRE_NONROOT=1
+  exec /usr/local/bin/openclaw-real "$@"
+fi
+
+echo "desktop OpenClaw shim: expected root or node identity, got uid=$current_uid" >&2
+exit 126

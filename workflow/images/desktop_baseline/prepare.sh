@@ -31,6 +31,7 @@ mkdir -p "${BUILD_DIR}/desktop"
 cp "${IMAGES_DIR}/desktop/notes_ui.py" "${BUILD_DIR}/desktop/notes_ui.py"
 cp "${IMAGES_DIR}/desktop/desktop_ocr.py" "${BUILD_DIR}/desktop/desktop_ocr.py"
 cp "${IMAGES_DIR}/desktop/desktopctl" "${BUILD_DIR}/desktop/desktopctl"
+cp "${IMAGES_DIR}/openclaw_nonroot" "${BUILD_DIR}/desktop/openclaw_nonroot"
 cp "${IMAGES_DIR}/desktop_model_stub.py" "${BUILD_DIR}/desktop/desktop_model_stub.py"
 cp "${IMAGES_DIR}/desktop_baseline_entrypoint.sh" "${BUILD_DIR}/desktop/desktop_baseline_entrypoint.sh"
 

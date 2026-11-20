@@ -28,7 +28,7 @@ umask 077
 install -d -m 0700 "$STATE_DIR"
 install -d -o node -g node -m 0700 "$AGENT_RUNTIME"
 [[ "$(stat -c '%a' "$STATE_DIR")" == "700" ]]
-[[ "$(stat -c '%a' "$SOURCE")" == "600" ]]
+[[ "$(stat -c '%a' "$SOURCE")" == "644" ]]
 
 desktopctl start
 # Re-enable X11 access control and grant only the dedicated local GUI user.
@@ -91,7 +91,7 @@ done
   exit 1
 }
 [[ "$(stat -c '%a' "$STATE_DIR")" == "700" ]]
-[[ "$(stat -c '%a' "$STATE")" == "600" ]]
+[[ "$(stat -c '%a' "$STATE")" == "644" ]]
 if as_node cat "$STATE" >/dev/null 2>&1; then
   echo "non-root GUI user gained access to grader state after interaction" >&2
   exit 1

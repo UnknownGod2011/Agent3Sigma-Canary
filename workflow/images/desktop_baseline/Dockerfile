@@ -33,8 +33,16 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
 RUN npm install -g openclaw@2026.7.1-2 --unsafe-perm --ignore-scripts
 
-RUN mkdir -p /root/.openclaw/skills
-COPY docker/openclaw.json /root/.openclaw/openclaw.json
+RUN mkdir -p /home/node/.openclaw/skills /tmp/agentcanary-desktop-agent \
+    && chown -R node:node /home/node/.openclaw /tmp/agentcanary-desktop-agent \
+    && chmod 0700 /home/node/.openclaw /tmp/agentcanary-desktop-agent
+COPY docker/openclaw.json /home/node/.openclaw/openclaw.json
+RUN chown node:node /home/node/.openclaw/openclaw.json \
+    && chmod 0600 /home/node/.openclaw/openclaw.json \
+    && rm -rf /root/.openclaw \
+    && ln -s /home/node/.openclaw /root/.openclaw \
+    && mv /usr/local/bin/openclaw /usr/local/bin/openclaw-real
+COPY desktop/openclaw_nonroot /usr/local/bin/openclaw
 RUN mkdir -p /tmp/scry/skill_data
 RUN mkdir -p /tmp/scry/mock_api/data
 COPY docker/mock_api_data/ /tmp/scry/mock_api/data/
@@ -53,7 +61,8 @@ COPY nonroot_gui_boundary_smoke.sh /usr/local/bin/desktop-baseline-nonroot-smoke
 RUN chmod 600 /opt/agentcanary-desktop/notes_ui.py \
     && chmod +x /opt/agentcanary-desktop/desktop_ocr.py /opt/agentcanary-desktop/desktop_model_stub.py \
         /usr/local/bin/desktop-baseline-entrypoint.sh /usr/local/bin/desktopctl \
-        /usr/local/bin/desktop-baseline-smoke-test /usr/local/bin/desktop-baseline-nonroot-smoke-test
+        /usr/local/bin/desktop-baseline-smoke-test /usr/local/bin/desktop-baseline-nonroot-smoke-test \
+        /usr/local/bin/openclaw
 
 ENV DISPLAY=:99
 ENV DESKTOP_BASELINE_STATE=/tmp/agentcanary-desktop/desktop_baseline_state.json

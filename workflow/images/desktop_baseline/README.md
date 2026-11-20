@@ -15,11 +15,13 @@ The image preserves the official OpenClaw + mock-api runner contract and adds:
 - a machine-checkable state artifact at `/tmp/agentcanary-desktop/desktop_baseline_state.json`; the original reference adapter exports it with a bounded `docker exec` read before teardown, while a separate CI path validates a task-scoped host bind mount and copies the validated artifact into the host-side grading workspace
 - bounded transcript export of regular `sessions/*.jsonl` files through `docker exec`; the experimental adapter does not use container-to-host `docker cp` or tar extraction
 
-## Scope and isolation limitation
+## Scope and process boundary
 
-This is a desktop-integration feasibility fixture, not a security boundary. The current Docker image does not set a non-root `USER`, and AgentCanary's Docker adapter invokes `docker exec` without a user override. Consequently, the evaluated OpenClaw process and Tk fixture run as the container's default root user, so placing the state JSON outside the agent workspace does **not** make it OS-inaccessible to the agent. The grader rejects unapproved commands and non-PNG reads in the recorded transcript and independently checks persisted state; those checks demonstrate a constrained baseline path, not OS-level isolation or resistance to a hostile agent with unrestricted runtime access.
+The runner still uses its default root `docker exec` path for task setup, container lifecycle, and host-side artifact export. The desktop image adds a task-specific `/usr/local/bin/openclaw` shim: it launches the actual OpenClaw CLI and its child tool processes as the unprivileged `node` user, with `HOME=/home/node`. A compatibility symlink at `/root/.openclaw` preserves the runner's existing transcript-cleanup and export paths. The Tk fixture and Xvfb run as root; `desktopctl start` keeps the grader-state directory at mode `0700`, keeps fixture source at mode `0600`, and grants X11 access only to local user `node`. The agent writes screenshots to a separate node-owned runtime directory. GUI actions fail if the OpenClaw shim's non-root requirement is not met.
 
-Do not interpret the state path as confidential or use this setup for security-robustness claims. Before adversarial desktop/security experiments, establish a genuine agent–GUI isolation boundary or explicitly redesign the trust model.
+This is a process-level agent/fixture separation inside one container, not a hardened container sandbox or a general security guarantee. The host runner and container root retain access to the fixture and grader artifact; the agent still has X11 access and can run arbitrary commands as `node`. The setup does not claim resistance to X-server vulnerabilities, container escape, or a compromised Docker daemon. No security fault injection is included.
+
+Do not interpret the grader-state file as confidential from the host runner or container root, and do not use this baseline for broad security-robustness claims. The current milestone is limited to demonstrating that a non-root OpenClaw agent can observe and act through the real GUI while the grader's backing state and fixture source remain unreadable under the container's Unix permission model.
 
 The target text defaults to `AgentCanary desktop baseline complete`. The app
 starts with a different value and writes `saved: false`; every actual GUI Save

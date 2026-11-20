@@ -95,6 +95,8 @@ jobs:
           cp workflow/images/desktop_baseline/desktop/notes_ui.py "$context/desktop/"
           cp workflow/images/desktop_baseline/desktop/desktop_ocr.py "$context/desktop/"
           cp workflow/images/desktop_baseline/desktop/desktopctl "$context/desktop/"
+          cp workflow/images/desktop_baseline/openclaw_nonroot "$context/desktop/"
+          cp workflow/images/desktop_baseline/nonroot_gui_boundary_smoke.sh "$context/desktop/"
           cp workflow/images/desktop_baseline/desktop_model_stub.py "$context/desktop/"
           cp workflow/images/desktop_baseline/desktop_baseline_entrypoint.sh "$context/desktop/"
           cp workflow/images/desktop_baseline/smoke_test.sh "$context/desktop/"
@@ -108,23 +110,38 @@ jobs:
               xvfb \
               xdotool \
               x11-utils \
+              x11-xserver-utils \
+              util-linux \
               scrot \
               tesseract-ocr \
               && rm -rf /var/lib/apt/lists/*
-          RUN mkdir -p /opt/agentcanary-desktop /tmp/agentcanary-desktop
+          RUN mkdir -p /opt/agentcanary-desktop /tmp/agentcanary-desktop /tmp/agentcanary-desktop-agent /home/node/.openclaw/skills \
+              && cp -a /root/.openclaw/. /home/node/.openclaw/ \
+              && chown -R node:node /home/node/.openclaw /tmp/agentcanary-desktop-agent \
+              && chmod 0700 /home/node/.openclaw /tmp/agentcanary-desktop-agent \
+              && chmod 0600 /home/node/.openclaw/openclaw.json \
+              && rm -rf /root/.openclaw \
+              && ln -s /home/node/.openclaw /root/.openclaw \
+              && mv /usr/local/bin/openclaw /usr/local/bin/openclaw-real
+          COPY desktop/openclaw_nonroot /usr/local/bin/openclaw
           COPY desktop/notes_ui.py /opt/agentcanary-desktop/notes_ui.py
           COPY desktop/desktop_ocr.py /opt/agentcanary-desktop/desktop_ocr.py
           COPY desktop/desktop_model_stub.py /opt/agentcanary-desktop/desktop_model_stub.py
           COPY desktop/desktopctl /usr/local/bin/desktopctl
           COPY desktop/desktop_baseline_entrypoint.sh /usr/local/bin/desktop-baseline-entrypoint.sh
           COPY desktop/smoke_test.sh /usr/local/bin/desktop-baseline-smoke-test
-          RUN chmod +x /opt/agentcanary-desktop/desktop_ocr.py /usr/local/bin/desktopctl /usr/local/bin/desktop-baseline-entrypoint.sh /usr/local/bin/desktop-baseline-smoke-test
+          COPY desktop/nonroot_gui_boundary_smoke.sh /usr/local/bin/desktop-baseline-nonroot-smoke-test
+          RUN chmod 0600 /opt/agentcanary-desktop/notes_ui.py
+          RUN chmod +x /opt/agentcanary-desktop/desktop_ocr.py /usr/local/bin/openclaw /usr/local/bin/desktopctl /usr/local/bin/desktop-baseline-entrypoint.sh /usr/local/bin/desktop-baseline-smoke-test /usr/local/bin/desktop-baseline-nonroot-smoke-test
           ENV DISPLAY=:99
           ENV DESKTOP_BASELINE_STATE=/tmp/agentcanary-desktop/desktop_baseline_state.json
           ENTRYPOINT ["/usr/local/bin/desktop-baseline-entrypoint.sh"]
           DOCKER
           echo "Builder OpenClaw pin: $(grep -E 'LABEL ai.agentcanary.openclaw_version=' "$context/Dockerfile" | tail -n 1)"
           docker build -t agentcanary-desktop-upstream-base "$context"
+
+      - name: Verify the non-root GUI boundary on the upstream-compatible image
+        run: docker run --rm agentcanary-desktop-upstream-base desktop-baseline-nonroot-smoke-test
 
       - name: Create the reference-controller image
         shell: bash
@@ -239,7 +256,9 @@ jobs:
           cleanup() { docker rm -f "$container" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
           docker create --name "$container" agentcanary-desktop-upstream-base >/dev/null
-          docker cp "$config" "$container:/root/.openclaw/openclaw.json"
+          docker cp "$config" "$container:/home/node/.openclaw/openclaw.json"
+          docker exec "$container" chown node:node /home/node/.openclaw/openclaw.json
+          docker exec "$container" chmod 0600 /home/node/.openclaw/openclaw.json
           docker cp "$marker" "$container:/opt/agentcanary-desktop/enable-model-stub"
           docker start "$container" >/dev/null
           ready=false

@@ -121,13 +121,13 @@ def export_transcripts(container_id:str,agent_id:str,workspace:str|Path,transcri
     if not container_id: return ""
     if not isinstance(agent_id,str) or not AGENT_ID_RE.fullmatch(agent_id) or agent_id in {".",".."}:
         raise ValueError(f"unsafe agent id: {agent_id!r}")
-    root=f"/root/.openclaw/agents/{agent_id}/sessions"
+    root=f"/home/node/.openclaw/agents/{agent_id}/sessions"
     payload=_payload(_run(container_id,TRANSCRIPT_SCRIPT,root),"transcript export")
     files=payload.get("files")
     if not isinstance(files,list): raise RuntimeError("transcript export missing files")
     normalized=agent_id.replace(":","-").lower()
     if not files and normalized!=agent_id:
-        payload=_payload(_run(container_id,TRANSCRIPT_SCRIPT,f"/root/.openclaw/agents/{normalized}/sessions"),
+        payload=_payload(_run(container_id,TRANSCRIPT_SCRIPT,f"/home/node/.openclaw/agents/{normalized}/sessions"),
                          "normalized transcript export")
         files=payload.get("files")
         if not isinstance(files,list): raise RuntimeError("normalized transcript export missing files")

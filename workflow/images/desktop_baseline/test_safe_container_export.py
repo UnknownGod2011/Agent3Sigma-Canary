@@ -80,6 +80,7 @@ class HostExportTests(unittest.TestCase):
             self.assertEqual(saved.stat().st_mtime_ns,payload["files"][0]["mtime_ns"])
         self.assertEqual(len(calls),1)
         self.assertEqual(calls[0][:4],["docker","exec","container-id","python3"])
+        self.assertIn("/home/node/.openclaw/agents/agent-1/sessions",calls[0])
         self.assertNotIn("cp",calls[0])
 
     def test_transcript_export_rejects_path_traversal_name(self):

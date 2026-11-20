@@ -28,7 +28,7 @@ umask 077
 install -d -m 0700 "$STATE_DIR"
 install -d -o node -g node -m 0700 "$AGENT_RUNTIME"
 [[ "$(stat -c '%a' "$STATE_DIR")" == "700" ]]
-[[ "$(stat -c '%a' "$SOURCE")" == "644" ]]
+[[ "$(stat -c '%a' "$SOURCE")" == "600" ]]
 
 desktopctl start
 # Re-enable X11 access control and grant only the dedicated local GUI user.

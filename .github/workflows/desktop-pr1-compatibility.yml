@@ -141,7 +141,7 @@ jobs:
           docker build -t agentcanary-desktop-upstream-base "$context"
 
       - name: Verify the non-root GUI boundary on the upstream-compatible image
-        run: docker run --rm agentcanary-desktop-upstream-base desktop-baseline-nonroot-smoke-test
+        run: docker run --rm --entrypoint /usr/local/bin/desktop-baseline-nonroot-smoke-test agentcanary-desktop-upstream-base
 
       - name: Create the reference-controller image
         shell: bash

@@ -257,10 +257,10 @@ jobs:
           trap cleanup EXIT
           docker create --name "$container" agentcanary-desktop-upstream-base >/dev/null
           docker cp "$config" "$container:/home/node/.openclaw/openclaw.json"
-          docker exec "$container" chown node:node /home/node/.openclaw/openclaw.json
-          docker exec "$container" chmod 0600 /home/node/.openclaw/openclaw.json
           docker cp "$marker" "$container:/opt/agentcanary-desktop/enable-model-stub"
           docker start "$container" >/dev/null
+          docker exec "$container" chown node:node /home/node/.openclaw/openclaw.json
+          docker exec "$container" chmod 0600 /home/node/.openclaw/openclaw.json
           ready=false
           for _ in $(seq 1 40); do
             if docker exec "$container" curl -fsS http://127.0.0.1:8765/health >/dev/null; then

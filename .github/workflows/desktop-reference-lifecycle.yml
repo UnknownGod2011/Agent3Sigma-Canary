@@ -6,6 +6,7 @@ on:
       - research/desktop-ui-baseline
     paths:
       - "workflow/images/desktop_baseline/**"
+      - "!workflow/images/desktop_baseline/RESEARCH_LOG.md"
       - "tasks/desktop_baseline/**"
       - "benchmark.py"
       - "scripts/**"

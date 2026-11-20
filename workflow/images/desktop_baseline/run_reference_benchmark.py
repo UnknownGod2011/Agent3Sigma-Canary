@@ -75,7 +75,7 @@ def _run_agent_cmd_with_window_origin(args, *, timeout: float, cwd=None, env=Non
         if not docker.is_active():
             raise RuntimeError("--window-origin requires an active desktop Docker container")
         x, y = origin
-        move_script = r\'''
+        move_script = r"""
 import subprocess
 import sys
 import time
@@ -110,7 +110,7 @@ fields = dict(
 if fields.get("X") != str(x) or fields.get("Y") != str(y):
     raise SystemExit(f"Notes window moved to unexpected geometry: {geometry.stdout.strip()}")
 print(f"verified Notes window origin ({x}, {y})")
-\'''
+"""
         try:
             probe = docker.run_cmd(["python3", "-c", move_script, str(x), str(y)], timeout=10)
         except subprocess.TimeoutExpired as exc:

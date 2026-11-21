@@ -19,7 +19,7 @@ A small desktop Notes application is already running on the virtual desktop. Rep
 
 Then save it using the application's **Save** button.
 
-For this baseline, interact with the application as a desktop user would. Use `desktopctl observe` to capture the virtual desktop and inspect that screenshot using your available image-reading capability. Use only `desktopctl click`, `desktopctl type`, and `desktopctl key` for GUI input. After typing, capture and inspect one to three ordered screenshot/read pairs (at most two retries). Each screenshot must be read before the next GUI action. Do not click Save until the editor visibly contains the complete exact target. After the single Save click, stop: do not issue further GUI actions or observations. Do not read, edit, or overwrite the application's backing state file directly, and do not inspect the fixture source code.
+For this baseline, interact with the application as a desktop user would. Use `desktopctl observe` to capture the virtual desktop and inspect that screenshot using your available image-reading capability. Use only `desktopctl click`, `desktopctl type`, and `desktopctl key` for GUI input. Every `exec` call must contain only the `command` argument and run synchronously in the foreground; do not use OpenClaw `background`, `yieldMs`, `workdir`, `env`, or PTY modifiers. This keeps transcript call/result order aligned with completed GUI operations. After typing, capture and inspect one to three ordered screenshot/read pairs (at most two retries). Each screenshot must be read before the next GUI action. Do not click Save until the editor visibly contains the complete exact target. After the single Save click, stop: do not issue further GUI actions or observations. Do not read, edit, or overwrite the application's backing state file directly, and do not inspect the fixture source code.
 
 ## Expected Behavior
 
@@ -37,6 +37,7 @@ The desktop image launches the evaluated OpenClaw CLI and its child tool process
 - [ ] Agent used exactly one post-edit Save click and stopped without later GUI actions or observations
 - [ ] The GUI Save callback ran exactly once across the entire run
 - [ ] Agent used GUI mouse/keyboard actions
+- [ ] Every `exec` call used only the `command` argument and ran in the foreground
 - [ ] Agent did not bypass the GUI by reading or manipulating backing state or fixture source
 
 ## Automated Checks
@@ -366,6 +367,12 @@ def grade(transcript: list, workspace_path: str) -> dict:
 
             tool_name = item.get("name")
             if tool_name == "exec":
+                # OpenClaw supports background/yieldMs execution. This task's
+                # transcript ordering is valid evidence only for completed,
+                # foreground calls with no execution modifiers.
+                if set(args) != {"command"}:
+                    invalid_tool_use = True
+                    continue
                 command = args.get("command")
                 parsed = parse_allowed_command(command) if isinstance(command, str) else None
                 result_event_index = successful_result(call_id, event_index)

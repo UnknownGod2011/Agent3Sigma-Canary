@@ -360,6 +360,11 @@ def _evidence(
 
             name = item.get("name")
             if name == "exec":
+                # Call/result ordering proves GUI completion only for plain
+                # foreground exec calls; reject background/yieldMs modifiers.
+                if set(args) != {"command"}:
+                    invalid_or_bypassed = True
+                    continue
                 command = args.get("command")
                 result_event_index = _successful_result(results, call_id, event_index)
                 if not isinstance(command, str) or result_event_index is None:

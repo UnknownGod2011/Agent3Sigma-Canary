@@ -329,6 +329,32 @@ def main() -> None:
         assert grade(task, workspace, valid_trace) == 1.0
         valid_evidence = _evidence(valid_trace)
 
+        # OpenClaw 2026.7.1-2 supports background/yieldMs exec modifiers.
+        # They invalidate call/result ordering as evidence of completed GUI
+        # actions, even if the final state later becomes correct.
+        for option in ({"background": True}, {"yieldMs": 1}):
+            asynchronous_trace = json.loads(json.dumps(valid_trace))
+            matched = False
+            for event in asynchronous_trace:
+                message = event.get("message", {})
+                if message.get("role") != "assistant":
+                    continue
+                for item in message.get("content", []):
+                    if (
+                        isinstance(item, dict)
+                        and item.get("type") == "toolCall"
+                        and item.get("name") == "exec"
+                        and item.get("arguments", {}).get("command") == f"desktopctl type '{TARGET}'"
+                    ):
+                        item["arguments"].update(option)
+                        matched = True
+                        break
+                if matched:
+                    break
+            assert matched, option
+            assert grade(task, workspace, asynchronous_trace) == 0.0, option
+            assert _evidence(asynchronous_trace)[3], option
+
         # Legacy or malformed callback counters must fail closed even when the
         # saved/current text and transcript otherwise satisfy the task.
         state_path.write_text(

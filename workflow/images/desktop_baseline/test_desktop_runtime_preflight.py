@@ -39,7 +39,10 @@ class DesktopRuntimePreflightTests(unittest.TestCase):
         def run_cmd(args, **kwargs):
             events.append("preflight")
             self.assertEqual(args[:2], ["sh", "-c"])
-            self.assertIn("xdpyinfo -display :99", args[2])
+            self.assertIn("test -f /tmp/agentcanary-desktop/desktop_baseline_state.json", args[2])
+            permission_probe = "runuser -u node -- test ! -r /tmp/agentcanary-desktop/desktop_baseline_state.json"
+            self.assertIn(permission_probe, args[2])
+            self.assertLess(args[2].index(permission_probe), args[2].index("xdpyinfo -display :99"))
             self.assertIn("xdotool search --onlyvisible --name", args[2])
             self.assertIn("xdotool getwindowgeometry --shell", args[2])
             self.assertIn("grep -qx 'X=140'", args[2])
@@ -54,6 +57,31 @@ class DesktopRuntimePreflightTests(unittest.TestCase):
             runner._run_deferred_pre_setup_commands_with_desktop_preflight(
                 self.task, self.workspace
             )
+
+        self.assertEqual(events, ["setup", "preflight"])
+
+    def test_agent_readable_grader_state_fails_closed(self) -> None:
+        events: list[str] = []
+
+        def run_cmd(args, **kwargs):
+            events.append("preflight")
+            self.assertIn(
+                "runuser -u node -- test ! -r /tmp/agentcanary-desktop/desktop_baseline_state.json",
+                args[2],
+            )
+            return subprocess.CompletedProcess(
+                args, 1, "", "grader state artifact is readable by the evaluated node user"
+            )
+
+        with self._setup_patch(events), patch.object(
+            runner.docker, "is_active", return_value=True
+        ), patch.object(runner.docker, "run_cmd", side_effect=run_cmd):
+            with self.assertRaisesRegex(
+                RuntimeError, "grader state artifact is readable by the evaluated node user"
+            ):
+                runner._run_deferred_pre_setup_commands_with_desktop_preflight(
+                    self.task, self.workspace
+                )
 
         self.assertEqual(events, ["setup", "preflight"])
 

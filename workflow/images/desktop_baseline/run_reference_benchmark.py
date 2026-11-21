@@ -188,7 +188,12 @@ def _run_deferred_pre_setup_commands_with_desktop_preflight(task, workspace) -> 
         "runuser -u node -- test ! -r /tmp/agentcanary-desktop/desktop_baseline_state.json || "
         "{ echo 'grader state artifact is readable by the evaluated node user (or permission probe failed)' >&2; exit 1; }; "
         "xdpyinfo -display :99 >/dev/null; "
-        "window_id=$(xdotool search --onlyvisible --name '^AgentCanary Desktop Baseline
+        "window_id=$(xdotool search --onlyvisible --name '^AgentCanary Desktop Baseline$'); "
+        "test -n \"$window_id\"; "
+        "geometry=$(xdotool getwindowgeometry --shell \"$window_id\"); "
+        "printf '%s\\n' \"$geometry\" | grep -qx 'X=140'; "
+        "printf '%s\\n' \"$geometry\" | grep -qx 'Y=120'"
+    )
     try:
         probe = docker.run_cmd(["sh", "-c", command], cwd=str(workspace), timeout=10)
     except subprocess.TimeoutExpired as exc:

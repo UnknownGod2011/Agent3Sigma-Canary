@@ -197,7 +197,7 @@ def _run_deferred_pre_setup_commands_with_desktop_preflight(task, workspace) -> 
         detail = (probe.stderr or probe.stdout or "").strip()
         suffix = f": {detail}" if detail else ""
         raise RuntimeError(
-            "desktop baseline preflight failed after pre_setup; expected an unreadable grader-state artifact, "
+            "desktop baseline GUI preflight failed after pre_setup; expected an unreadable grader-state artifact, "
             "X11 display :99, and the Notes window at (140, 120)" + suffix
         )
     print("Desktop runtime preflight passed: grader state is not readable by node; X11 display and Notes window at (140, 120) are ready", flush=True)

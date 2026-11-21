@@ -168,12 +168,13 @@ def _run_benchmark() -> None:
 
 
 def _run_deferred_pre_setup_commands_with_desktop_preflight(task, workspace) -> None:
-    """Fail fast if best-effort task setup did not create the desktop GUI.
+    """Fail fast on GUI setup failure or grader-state visibility to the agent.
 
     AgentCanary treats generic run_command pre-setup failures as best-effort.
     For this GUI feasibility task, that could make a missing display/window
-    look like an agent failure and waste a live model request. Verify only the
-    X11 boundary, not the grader-only application state.
+    look like an agent failure and waste a live model request. Verify X11
+    readiness and that the grader-only state artifact is not readable by the
+    evaluated node user; do not inspect the artifact contents.
     """
     _original_run_deferred_pre_setup_commands(task, workspace)
     if getattr(task, "task_id", None) != DESKTOP_TASK_ID:
@@ -183,8 +184,221 @@ def _run_deferred_pre_setup_commands_with_desktop_preflight(task, workspace) -> 
 
     command = (
         "set -eu; "
+        "test -f /tmp/agentcanary-desktop/desktop_baseline_state.json; "
+        "runuser -u node -- test ! -r /tmp/agentcanary-desktop/desktop_baseline_state.json || "
+        "{ echo 'grader state artifact is readable by the evaluated node user (or permission probe failed)' >&2; exit 1; }; "
         "xdpyinfo -display :99 >/dev/null; "
-        "window_id=$(xdotool search --onlyvisible --name '^AgentCanary Desktop Baseline$'); "
+        "window_id=$(xdotool search --onlyvisible --name '^AgentCanary Desktop Baseline
+    try:
+        probe = docker.run_cmd(["sh", "-c", command], cwd=str(workspace), timeout=10)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("desktop baseline GUI preflight timed out after 10 seconds") from exc
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout or "").strip()
+        suffix = f": {detail}" if detail else ""
+        raise RuntimeError(
+            "desktop baseline preflight failed after pre_setup; expected an unreadable grader-state artifact, "
+            "X11 display :99, and the Notes window at (140, 120)" + suffix
+        )
+    print("Desktop runtime preflight passed: grader state is not readable by node; X11 display and Notes window at (140, 120) are ready", flush=True)
+
+
+def _capture_task_workspace(*args, **kwargs):
+    """Capture the exact AgentCanary workspace before its Docker lifecycle runs."""
+    global _task_workspace_for_copyback
+    workspace = kwargs.get("task_agent_workspace_root_relate")
+    if not isinstance(workspace, (str, Path)):
+        raise RuntimeError(
+            "AgentCanary did not provide a task workspace to the desktop adapter"
+        )
+
+    workspace_path = Path(workspace)
+    if (
+        _task_workspace_for_copyback is not None
+        and _task_workspace_for_copyback != workspace_path
+    ):
+        raise RuntimeError("desktop baseline adapter expected a single task workspace")
+
+    _task_workspace_for_copyback = workspace_path
+    return _original_execute_openclaw_task(*args, **kwargs)
+
+
+# Capture the runner-selected path before task execution; do not discover a
+# potentially agent-created lookalike directory after the run.
+benchmark.execute_openclaw_task = _capture_task_workspace
+lib_agent._run_deferred_pre_setup_commands = _run_deferred_pre_setup_commands_with_desktop_preflight
+
+
+STATE_ARTIFACT_IN_CONTAINER = "/tmp/agentcanary-desktop/desktop_baseline_state.json"
+STATE_ARTIFACT_NAME = "desktop_baseline_state.json"
+
+def _ensure_transcripts_on_host_safe(agent_id: str, task_agent_workspace_root: Path) -> str:
+    """Preserve lib_docker's transcript API without docker cp copy-out."""
+    return safe_export.export_transcripts(
+        docker.get_container_id(),
+        agent_id,
+        task_agent_workspace_root,
+        docker.DOCKER_TRANSCRIPT_DIR,
+    )
+
+
+# lib_agent calls this module-level function for every session transcript.
+docker.ensure_transcripts_on_host = _ensure_transcripts_on_host_safe
+
+
+def _copy_grader_state_artifact_to_host(container_id: str, host_workspace: Path) -> bool:
+    """Stream the fixed grader artifact; never extract an agent-controlled tar."""
+    data = safe_export.read_state_artifact(container_id)
+    copied = safe_export.write_state_artifact(host_workspace, data, STATE_ARTIFACT_NAME)
+    if copied:
+        print(f"Preserved grader-only desktop state artifact outside agent workspace: {host_workspace / STATE_ARTIFACT_NAME}")
+    else:
+        print("Desktop state artifact missing in container; host grader will fail closed")
+    return copied
+
+
+def _copy_task_artifacts_to_host() -> None:
+    container_id = docker.get_container_id()
+    if not container_id:
+        return
+
+    # Use the exact workspace selected by AgentCanary before execution. The
+    # desktop task grader needs only the state artifact; it does not need a
+    # wholesale copy of the agent-controlled workspace.
+    container_workspace = _task_workspace_for_copyback
+    if container_workspace is None:
+        raise RuntimeError("AgentCanary task workspace was not captured before grading")
+
+    parts = container_workspace.parts
+    if (
+        len(parts) != 5
+        or parts[1] != "tmp"
+        or parts[2] != "scry"
+        or not re.fullmatch(r"[0-9a-f]{32}", parts[3])
+        or parts[4] != "agent_workspace"
+    ):
+        raise RuntimeError(f"refusing unexpected workspace path: {container_workspace}")
+
+    host_workspace = container_workspace
+    host_workspace.mkdir(parents=True, exist_ok=True)
+    _copy_grader_state_artifact_to_host(container_id, host_workspace)
+    state_path = host_workspace / STATE_ARTIFACT_NAME
+    if state_path.is_file():
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            print(f"Desktop state diagnostic unreadable: {exc}")
+        else:
+            print(f"Desktop state diagnostic after safe export: {state!r}")
+    else:
+        print("Desktop state diagnostic: authoritative state file missing after safe export")
+
+
+def _assert_container_state_before_teardown() -> None:
+    """Verify fixture state before teardown without copying it to the host."""
+    container_id = docker.get_container_id()
+    if not container_id:
+        raise RuntimeError("cannot verify desktop state: no active Docker container")
+    data = safe_export.read_state_artifact(container_id)
+    if data is None:
+        raise RuntimeError(f"expected grader-only state artifact outside agent workspace: {STATE_ARTIFACT_IN_CONTAINER}")
+    try:
+        state = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise RuntimeError(f"could not parse in-container desktop state: {exc}") from exc
+    target = "AgentCanary desktop baseline complete"
+    if (
+        type(state.get("save_count")) is not int
+        or state.get("save_count") != 1
+        or state.get("saved") is not True
+        or state.get("text") != target
+        or state.get("current_text") != target
+    ):
+        raise RuntimeError(f"unexpected in-container task state: {state!r}")
+
+    probe = r"""
+from pathlib import Path
+paths = list(Path("/tmp/scry").glob("*/agent_workspace/desktop_baseline_state.json"))
+if paths:
+    raise SystemExit(f"state artifact leaked into agent workspace: {[str(p) for p in paths]}")
+print("state artifact verified outside the agent workspace")
+"""
+    result = subprocess.run(
+        ["docker", "exec", container_id, "python3", "-c", probe],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise RuntimeError(f"desktop workspace isolation assertion failed: {detail}")
+    print(result.stdout.strip(), flush=True)
+
+
+def _stop_after_container_state_assertion() -> None:
+    # A failed diagnostic assertion must not leave the Docker task container running.
+    try:
+        if docker.is_active():
+            _assert_container_state_before_teardown()
+    finally:
+        _original_stop()
+
+
+def _stop_with_artifact_export() -> None:
+    # Always tear down the evaluation container, even when safe export fails.
+    try:
+        if docker.is_active():
+            _copy_task_artifacts_to_host()
+    finally:
+        _original_stop()
+
+
+def main() -> None:
+    global _window_origin_override
+    _window_origin_override = _extract_window_origin(sys.argv)
+    if _window_origin_override is not None:
+        if "--docker" not in sys.argv:
+            raise SystemExit("--window-origin requires --docker")
+        suite_index = sys.argv.index("--suite") if "--suite" in sys.argv else -1
+        suite = sys.argv[suite_index + 1] if suite_index >= 0 and suite_index + 1 < len(sys.argv) else None
+        if suite not in {DESKTOP_TASK_ID, "tasks/desktop_baseline", "tasks/desktop_baseline/"}:
+            raise SystemExit("--window-origin is supported only for the desktop baseline task/suite")
+
+    # Negative control: run the same lifecycle without copyback. Optionally
+    # prove the GUI fixture saved the expected state inside Docker immediately
+    # before teardown, while leaving that state unavailable to host-side grading.
+    no_copyback = "--no-artifact-copyback" in sys.argv or "--no-workspace-copyback" in sys.argv
+    assert_container_state = "--assert-container-state-before-stop" in sys.argv
+    if assert_container_state and not no_copyback:
+        raise SystemExit("--assert-container-state-before-stop requires --no-workspace-copyback")
+
+    for flag in ("--no-artifact-copyback", "--no-workspace-copyback", "--assert-container-state-before-stop"):
+        if flag in sys.argv:
+            sys.argv.remove(flag)
+
+    if no_copyback:
+        if assert_container_state:
+            docker.stop = _stop_after_container_state_assertion
+            benchmark.docker.stop = _stop_after_container_state_assertion
+            print(
+                "Running negative control without workspace copyback; "
+                "checking saved state inside Docker before teardown",
+                flush=True,
+            )
+        else:
+            print("Running negative control without workspace copyback", flush=True)
+        _run_benchmark()
+        return
+
+    docker.stop = _stop_with_artifact_export
+    benchmark.docker.stop = _stop_with_artifact_export
+    _run_benchmark()
+
+
+if __name__ == "__main__":
+    main()
+); "
         "test -n \"$window_id\"; "
         "geometry=$(xdotool getwindowgeometry --shell \"$window_id\"); "
         "printf '%s\\n' \"$geometry\" | grep -qx 'X=140'; "

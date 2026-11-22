@@ -29,7 +29,7 @@ from lib_tasks import TaskLoader  # noqa: E402
 
 TASK_ID = "task_9000_desktop_notes_gui"
 TASK_PATH = REPO_ROOT / "tasks" / "desktop_baseline" / f"{TASK_ID}.md"
-DEFAULT_SCREENSHOT = "/tmp/agentcanary-desktop/screen.png"
+DEFAULT_SCREENSHOT = "/tmp/agentcanary-desktop-agent/screen.png"
 FORBIDDEN = (
     "desktop_baseline_state.json",
     "notes_ui.py",

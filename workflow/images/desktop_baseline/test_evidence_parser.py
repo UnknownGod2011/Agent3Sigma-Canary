@@ -329,6 +329,28 @@ def main() -> None:
         assert grade(task, workspace, valid_trace) == 1.0
         valid_evidence = _evidence(valid_trace)
 
+        # The OpenClaw shim sets DESKTOP_BASELINE_RUNTIME to this directory.
+        # The verifier must pair the default desktopctl screenshot with the
+        # same path that the task grader and evaluated agent use.
+        default_path_commands = (
+            "desktopctl observe",
+            "desktopctl click 320 180",
+            "desktopctl key Home",
+            "desktopctl key shift+End",
+            f"desktopctl type '{TARGET}'",
+            "desktopctl observe",
+            "desktopctl click 320 330",
+        )
+        default_path_trace = transcript(
+            default_path_commands,
+            read_path="/tmp/agentcanary-desktop-agent/screen.png",
+        )
+        assert grade(task, workspace, default_path_trace) == 1.0
+        default_path_evidence = _evidence(default_path_trace)
+        assert not default_path_evidence[3]
+        assert _inspected_before_action(*default_path_evidence[:3])
+        assert _inspected_after_edit_before_save(*default_path_evidence[:3])
+
         # This task accepts only a plain foreground exec call. Reject
         # asynchronous execution and modifiers that can change the execution
         # context or GUI process boundary, even if the final state is correct.

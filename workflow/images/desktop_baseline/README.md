@@ -12,8 +12,8 @@ The image preserves the official OpenClaw + mock-api runner contract and adds:
 - a deterministic Tk notes application
 - `desktopctl observe` for PNG screenshots; reusing a screenshot path refreshes that exact file
 - `desktopctl click`, `type`, and `key` for mouse/keyboard input
-- a machine-checkable state artifact at `/tmp/agentcanary-desktop/desktop_baseline_state.json`; the original reference adapter exports it with a bounded `docker exec` read before teardown, while a separate CI path validates a task-scoped host bind mount and copies the validated artifact into the host-side grading workspace
-- bounded transcript export of regular `sessions/*.jsonl` files through `docker exec`; the experimental adapter does not use container-to-host `docker cp` or tar extraction
+- a machine-checkable state artifact at `/tmp/agentcanary-desktop/desktop_baseline_state.json`; the reference adapter exports it with a bounded `docker exec` read before teardown. Separate CI-only adapters compare a task-scoped host bind mount and fixed-path Docker CLI `docker cp` into a fresh host-owned staging directory; each validates the single artifact before host-side grading
+- bounded transcript export of regular `sessions/*.jsonl` files through `docker exec`. The Docker CLI experiment is limited to the fixed grader-state file: it does not copy the agent workspace or ask the runner to extract an agent-controlled archive
 
 ## Scope and process boundary
 
@@ -67,32 +67,48 @@ controller by testing the real OpenClaw tool dispatch/provider/transcript path
 without API credentials, external model-provider calls, or per-run API cost.
 It does not change the documented container isolation limitation.
 
-## Task-scoped artifact handoff comparison
+## Artifact-handoff comparison
 
-The CI workflow compares the existing pre-teardown export with a task-scoped
-bind mount at `/tmp/agentcanary-desktop`. The mount is a fresh host temporary
-directory for each run. After the container stops, the adapter accepts only a
-bounded, regular, single-link state file and writes it into the task's host
-workspace before the existing `grade_task` call.
+The CI workflow compares three fork-only ways to make one grader-state file
+available to the existing host-side `grade_task` call:
 
-The comparison covers two repeated OCR-reference runs and two repeated native
-OpenClaw CLI runs against the deterministic local provider, all using the bind
-mount. Each positive run scored 1.0/1.0. For each repeated pair, CI compares the
-raw final-state bytes, ordered state-changing GUI-action sequence, and captured
-screenshot payloads by SHA-256. It writes a machine-readable
-`desktop_reproducibility_manifest.json` into the first run's retained artifact;
-the manifest records the upstream commit, per-run hashes, action/observation/
-read counts, and bounded verification retries. Observation/retry counts may
-differ by up to two bounded re-observations while the Tk event loop processes
-typed input. The no-mount and no-copyback controls recorded the GUI tool
-trajectory but scored 0.0/1.0 because the host grader could not see the state
-artifact.
+1. **Bounded `docker exec` export (reference path).** A fixed in-container
+   reader returns a size-bounded payload; the host validates and writes only
+   the allowlisted artifact before container teardown.
+2. **Task-scoped bind mount.** A fresh host temporary directory is mounted at
+   `/tmp/agentcanary-desktop`. After the container stops, the adapter accepts
+   only a bounded, regular, single-link state file and copies it into the
+   task's host workspace.
+3. **Docker CLI `docker cp` (CI-only experiment).** The host copies only
+   `/tmp/agentcanary-desktop/desktop_baseline_state.json` into a fresh
+   host-owned staging directory. The helper rejects symlinks, non-regular or
+   multi-link files, and oversized payloads before writing the validated bytes
+   into the task workspace. It is a separate wrapper, not the default runner.
 
-This is a fork-only lifecycle wrapper, not a first-class AgentCanary API. The
+The bind-mount comparison covers two repeated OCR-reference runs and two
+repeated native OpenClaw CLI runs against the deterministic local provider.
+Each positive run scored 1.0/1.0. For each repeated pair, CI compares the raw
+final-state bytes, ordered state-changing GUI-action sequence, and captured
+screenshot payloads by SHA-256. The Docker CLI path is separately exercised by
+two repeated reference-controller runs against the current upstream runner;
+both scored 1.0/1.0 and produced identical state, GUI-action, and screenshot
+hashes. Its no-copyback control verifies the expected state inside Docker just
+before teardown, deliberately omits host export, and scores 0.0/1.0. A unit
+test also verifies that a failed `docker cp` export is converted into a missing
+grader artifact rather than a false success.
+
+The machine-readable `desktop_reproducibility_manifest.json` records the
+upstream commit, per-run hashes, action/observation/read counts, and bounded
+verification retries. Observation/retry counts may differ by up to two bounded
+re-observations while the Tk event loop processes typed input.
+
+These are fork-only lifecycle wrappers, not first-class AgentCanary APIs. The
 bind mount is writable and visible to container root; it is an artifact-handoff
-experiment, not a secure evidence channel or isolation boundary. The local
-provider is scripted, so these results do not establish autonomous model quality
-or semantic screenshot understanding.
+experiment, not a secure evidence channel or isolation boundary. The Docker
+CLI path uses the Docker daemon's fixed-path copy operation into host-owned
+staging; it does not copy the full agent workspace. The reference controller
+and local provider are scripted with Tesseract OCR, so these results do not
+establish autonomous model quality or semantic screenshot understanding.
 
 ## Build the research image
 

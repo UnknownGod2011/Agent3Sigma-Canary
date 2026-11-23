@@ -446,6 +446,71 @@ jobs:
             --upstream-sha "$UPSTREAM_MASTER_SHA" \
             --output "$RUNNER_TEMP/upstream-docker-cp-reference-first/desktop_reproducibility_manifest.json"
 
+      - name: Confirm Docker CLI no-copyback negative control on upstream runner
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-master
+        run: |
+          set -euo pipefail
+          results_dir="$RUNNER_TEMP/upstream-docker-cp-no-copyback"
+          log="$RUNNER_TEMP/upstream-docker-cp-no-copyback.log"
+          rm -rf "$results_dir" "$log"
+          DOCKER_IMAGE=agentcanary-desktop-upstream-reference uv run python \
+            workflow/images/desktop_baseline/run_docker_cp_benchmark.py \
+            --no-artifact-copyback \
+            --assert-container-state-before-stop \
+            --model reference/desktop \
+            --suite task_9000_desktop_notes_gui \
+            --docker \
+            --timeout-multiplier 1.0 \
+            --output-dir "$results_dir" \
+            --verbose 2>&1 | tee "$log"
+          grep -F "state artifact verified outside the agent workspace" "$log"
+          if grep -Fq "Preserved grader-only desktop state artifact via docker cp" "$log"; then
+            echo "unexpected Docker CLI artifact copyback in the negative control" >&2
+            exit 1
+          fi
+          python - "$results_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          task_id = "task_9000_desktop_notes_gui"
+          artifacts = list(root.glob(f"job_*/task_{task_id}/task_{task_id}.json"))
+          assert len(artifacts) == 1, artifacts
+          data = json.loads(artifacts[0].read_text(encoding="utf-8"))
+          grading = data.get("grading", {})
+          assert data.get("task_id") == task_id, data.get("task_id")
+          assert grading.get("max_score") == 1.0, grading
+          assert grading.get("score") == 0.0, grading
+          assert grading.get("breakdown", {}).get("desktop_baseline_valid") == 0.0, grading
+
+          commands = []
+          image_reads = []
+          for event in data.get("transcript", []):
+              if not isinstance(event, dict) or event.get("type") != "message":
+                  continue
+              message = event.get("message", {})
+              if not isinstance(message, dict) or message.get("role") != "assistant":
+                  continue
+              for item in message.get("content", []):
+                  if not isinstance(item, dict) or item.get("type") != "toolCall":
+                      continue
+                  args = item.get("arguments", {})
+                  if item.get("name") == "exec" and isinstance(args, dict):
+                      command = args.get("command")
+                      if isinstance(command, str):
+                          commands.append(command.lower())
+                  if item.get("name") == "read" and isinstance(args, dict):
+                      image_path = args.get("path")
+                      if isinstance(image_path, str) and image_path.endswith(".png"):
+                          image_reads.append(image_path)
+          assert any("desktopctl observe" in command for command in commands), commands
+          assert any("desktopctl click" in command for command in commands), commands
+          assert image_reads, image_reads
+          print("Docker CLI no-copyback control verified: the in-container GUI task completed, but host grading scored 0.0")
+          PY
+
       - name: Run task-scoped bind-mount OpenClaw tool loop twice on upstream runner
         shell: bash
         working-directory: ${{ runner.temp }}/upstream-master
@@ -570,6 +635,7 @@ jobs:
             ${{ runner.temp }}/upstream-bind-mount-reference-repeat/**
             ${{ runner.temp }}/upstream-docker-cp-reference-first/**
             ${{ runner.temp }}/upstream-docker-cp-reference-repeat/**
+            ${{ runner.temp }}/upstream-docker-cp-no-copyback/**
             ${{ runner.temp }}/upstream-bind-mount-openclaw-stub-first/**
             ${{ runner.temp }}/upstream-bind-mount-openclaw-stub-repeat/**
             ${{ runner.temp }}/upstream-no-bind-mount-negative-control/**

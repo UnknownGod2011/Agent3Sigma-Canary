@@ -82,6 +82,31 @@ class DockerCpHandoffTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "timed out"):
                     handoff.copy_container_artifact(CONTAINER_ID, tmp)
 
+    def test_runner_fails_closed_when_docker_cp_export_fails(self):
+        baseline = runner.baseline
+        workspace = Path("/tmp/agentcanary-desktop-docker-cp-failure")
+        writes = []
+
+        def fake_write(root, data, filename):
+            writes.append((root, data, filename))
+            return False
+
+        with (
+            patch.object(
+                runner,
+                "copy_container_artifact",
+                side_effect=RuntimeError("docker cp failed (exit 1): source missing"),
+            ),
+            patch.object(baseline.safe_export, "write_state_artifact", side_effect=fake_write),
+        ):
+            copied = runner._copy_grader_state_artifact_to_host(CONTAINER_ID, workspace)
+
+        self.assertFalse(copied)
+        self.assertEqual(
+            writes,
+            [(workspace, None, baseline.STATE_ARTIFACT_NAME)],
+        )
+
     def test_rejects_symlink_artifact(self):
         with tempfile.TemporaryDirectory() as tmp:
             outside = Path(tmp).parent / f"{Path(tmp).name}-outside.json"

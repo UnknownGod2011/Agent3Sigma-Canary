@@ -79,6 +79,7 @@ jobs:
           uv run python workflow/images/desktop_baseline/test_bind_mount_runner.py
           uv run python workflow/images/desktop_baseline/test_docker_cp_handoff.py
           uv run python workflow/images/desktop_baseline/test_compare_repeated_runs.py
+          uv run python workflow/images/desktop_baseline/test_compare_handoff_modes.py
           uv run python workflow/images/desktop_baseline/test_upstream_runner_compatibility.py
 
       - name: Prepare the upstream builder context and build a desktop-compatible image
@@ -446,6 +447,16 @@ jobs:
             --upstream-sha "$UPSTREAM_MASTER_SHA" \
             --output "$RUNNER_TEMP/upstream-docker-cp-reference-first/desktop_reproducibility_manifest.json"
 
+      - name: Assert reference artifact handoff equivalence
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-master
+        run: |
+          set -euo pipefail
+          python workflow/images/desktop_baseline/compare_handoff_modes.py \
+            --first "$RUNNER_TEMP/upstream-bind-mount-reference-first/desktop_reproducibility_manifest.json" \
+            --second "$RUNNER_TEMP/upstream-docker-cp-reference-first/desktop_reproducibility_manifest.json" \
+            --output "$RUNNER_TEMP/upstream-bind-mount-reference-first/handoff-equivalence.json"
+
       - name: Run Docker CLI OpenClaw tool loop twice on upstream runner
         shell: bash
         working-directory: ${{ runner.temp }}/upstream-master
@@ -627,6 +638,16 @@ jobs:
             --mode openclaw-local-stub \
             --upstream-sha "$UPSTREAM_MASTER_SHA" \
             --output "$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-first/desktop_reproducibility_manifest.json"
+
+      - name: Assert OpenClaw local-provider artifact handoff equivalence
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-master
+        run: |
+          set -euo pipefail
+          python workflow/images/desktop_baseline/compare_handoff_modes.py \
+            --first "$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-first/desktop_reproducibility_manifest.json" \
+            --second "$RUNNER_TEMP/upstream-docker-cp-openclaw-stub-first/desktop_reproducibility_manifest.json" \
+            --output "$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-first/handoff-equivalence.json"
 
       - name: Confirm the no-mount negative control on upstream runner
         shell: bash

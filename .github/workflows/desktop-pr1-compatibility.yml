@@ -77,6 +77,7 @@ jobs:
           uv run python workflow/images/desktop_baseline/test_workspace_copyback_cleanup.py
           uv run python workflow/images/desktop_baseline/test_bind_mount_handoff.py
           uv run python workflow/images/desktop_baseline/test_bind_mount_runner.py
+          uv run python workflow/images/desktop_baseline/test_docker_cp_handoff.py
           uv run python workflow/images/desktop_baseline/test_compare_repeated_runs.py
           uv run python workflow/images/desktop_baseline/test_upstream_runner_compatibility.py
 
@@ -420,6 +421,31 @@ jobs:
             --upstream-sha "$UPSTREAM_MASTER_SHA" \
             --output "$RUNNER_TEMP/upstream-bind-mount-reference-first/desktop_reproducibility_manifest.json"
 
+      - name: Run docker-cp artifact handoff twice on upstream runner
+        shell: bash
+        working-directory: ${{ runner.temp }}/upstream-master
+        run: |
+          set -euo pipefail
+          for attempt in first repeat; do
+            results_dir="$RUNNER_TEMP/upstream-docker-cp-reference-$attempt"
+            rm -rf "$results_dir"
+            DOCKER_IMAGE=agentcanary-desktop-upstream-reference uv run python \
+              workflow/images/desktop_baseline/run_docker_cp_benchmark.py \
+              --model reference/desktop \
+              --suite task_9000_desktop_notes_gui \
+              --docker \
+              --timeout-multiplier 1.0 \
+              --output-dir "$results_dir" \
+              --verbose
+            uv run python workflow/images/desktop_baseline/verify_benchmark.py "$results_dir"
+          done
+          python workflow/images/desktop_baseline/compare_repeated_runs.py \
+            --first "$RUNNER_TEMP/upstream-docker-cp-reference-first" \
+            --repeat "$RUNNER_TEMP/upstream-docker-cp-reference-repeat" \
+            --mode reference \
+            --upstream-sha "$UPSTREAM_MASTER_SHA" \
+            --output "$RUNNER_TEMP/upstream-docker-cp-reference-first/desktop_reproducibility_manifest.json"
+
       - name: Run task-scoped bind-mount OpenClaw tool loop twice on upstream runner
         shell: bash
         working-directory: ${{ runner.temp }}/upstream-master
@@ -542,6 +568,8 @@ jobs:
             ${{ runner.temp }}/upstream-openclaw-stub-repeat/**
             ${{ runner.temp }}/upstream-bind-mount-reference-first/**
             ${{ runner.temp }}/upstream-bind-mount-reference-repeat/**
+            ${{ runner.temp }}/upstream-docker-cp-reference-first/**
+            ${{ runner.temp }}/upstream-docker-cp-reference-repeat/**
             ${{ runner.temp }}/upstream-bind-mount-openclaw-stub-first/**
             ${{ runner.temp }}/upstream-bind-mount-openclaw-stub-repeat/**
             ${{ runner.temp }}/upstream-no-bind-mount-negative-control/**

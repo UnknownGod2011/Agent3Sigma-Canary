@@ -182,6 +182,12 @@ jobs:
               --verbose
             uv run python workflow/images/desktop_baseline/verify_benchmark.py "$results_dir"
           done
+          python workflow/images/desktop_baseline/compare_repeated_runs.py \
+            --first "$RUNNER_TEMP/upstream-reference-first" \
+            --repeat "$RUNNER_TEMP/upstream-reference-repeat" \
+            --mode reference \
+            --upstream-sha "$UPSTREAM_MASTER_SHA" \
+            --output "$RUNNER_TEMP/upstream-reference-first/desktop_reproducibility_manifest.json"
           echo "Reference lifecycle repeated on upstream master $UPSTREAM_MASTER_SHA"
 
       - name: Confirm host grading depends on artifact copyback
@@ -447,15 +453,23 @@ jobs:
             --upstream-sha "$UPSTREAM_MASTER_SHA" \
             --output "$RUNNER_TEMP/upstream-docker-cp-reference-first/desktop_reproducibility_manifest.json"
 
-      - name: Assert reference artifact handoff equivalence
+      - name: Assert all three reference artifact handoff modes are equivalent
         shell: bash
         working-directory: ${{ runner.temp }}/upstream-master
         run: |
           set -euo pipefail
           python workflow/images/desktop_baseline/compare_handoff_modes.py \
+            --first "$RUNNER_TEMP/upstream-reference-first/desktop_reproducibility_manifest.json" \
+            --second "$RUNNER_TEMP/upstream-bind-mount-reference-first/desktop_reproducibility_manifest.json" \
+            --output "$RUNNER_TEMP/upstream-reference-first/bounded-vs-bind-mount.json"
+          python workflow/images/desktop_baseline/compare_handoff_modes.py \
+            --first "$RUNNER_TEMP/upstream-reference-first/desktop_reproducibility_manifest.json" \
+            --second "$RUNNER_TEMP/upstream-docker-cp-reference-first/desktop_reproducibility_manifest.json" \
+            --output "$RUNNER_TEMP/upstream-reference-first/bounded-vs-docker-cp.json"
+          python workflow/images/desktop_baseline/compare_handoff_modes.py \
             --first "$RUNNER_TEMP/upstream-bind-mount-reference-first/desktop_reproducibility_manifest.json" \
             --second "$RUNNER_TEMP/upstream-docker-cp-reference-first/desktop_reproducibility_manifest.json" \
-            --output "$RUNNER_TEMP/upstream-bind-mount-reference-first/handoff-equivalence.json"
+            --output "$RUNNER_TEMP/upstream-bind-mount-reference-first/bind-mount-vs-docker-cp.json"
 
       - name: Run Docker CLI OpenClaw tool loop twice on upstream runner
         shell: bash

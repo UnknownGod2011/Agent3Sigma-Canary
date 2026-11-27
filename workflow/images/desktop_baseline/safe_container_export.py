@@ -38,7 +38,8 @@ try:
         before=os.stat(name,dir_fd=root_fd,follow_symlinks=False)
         if not stat.S_ISREG(before.st_mode) or before.st_nlink!=1: continue
         if before.st_size<0 or before.st_size>MAX_FILE: raise ValueError("transcript too large")
-        fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=root_fd)
+        # A session file can be replaced with a FIFO after stat; never block on that race.
+        fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC|os.O_NONBLOCK,dir_fd=root_fd)
         try:
             opened=os.fstat(fd)
             if (opened.st_dev,opened.st_ino)!=(before.st_dev,before.st_ino): continue

@@ -35,6 +35,30 @@ class EmbeddedScriptTests(unittest.TestCase):
                                    capture_output=True,text=True,check=False)
             self.assertNotEqual(result.returncode,0)
 
+    def test_transcript_reader_refuses_fifo_replaced_after_stat_without_blocking(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)/"sessions"; root.mkdir()
+            (root/"session-1.jsonl").write_text('{"type":"message"}\\n')
+            race_wrapper = r"""
+import os,sys
+original_stat=os.stat
+def racing_stat(path,*args,**kwargs):
+    result=original_stat(path,*args,**kwargs)
+    if path=="session-1.jsonl" and kwargs.get("dir_fd") is not None:
+        os.unlink(path,dir_fd=kwargs["dir_fd"])
+        os.mkfifo(path,dir_fd=kwargs["dir_fd"])
+    return result
+os.stat=racing_stat
+exec(compile(sys.stdin.read(), "<embedded-transcript-export>", "exec"))
+"""
+            result=subprocess.run(
+                [sys.executable,"-c",race_wrapper,str(root)],
+                input=export.TRANSCRIPT_SCRIPT,
+                capture_output=True,text=True,check=False,timeout=2
+            )
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout),{"files":[]})
+
     def test_state_reader_returns_regular_file_bytes(self):
         with tempfile.TemporaryDirectory() as tmp:
             parent=Path(tmp)/"desktop"; parent.mkdir()

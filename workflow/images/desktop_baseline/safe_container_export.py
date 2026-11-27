@@ -79,8 +79,8 @@ try: parent_fd=open_dir(sys.argv[1])
 except FileNotFoundError:
     print(json.dumps({"status":"missing"})); raise SystemExit(0)
 try:
-    try: # O_NONBLOCK lets fstat reject a FIFO immediately instead of waiting for a writer.
-    fd=os.open(sys.argv[2],os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC|os.O_NONBLOCK,dir_fd=parent_fd)
+    # O_NONBLOCK prevents a FIFO from blocking before fstat can reject it.
+    try: fd=os.open(sys.argv[2],os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC|os.O_NONBLOCK,dir_fd=parent_fd)
     except FileNotFoundError:
         print(json.dumps({"status":"missing"})); raise SystemExit(0)
     try:

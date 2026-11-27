@@ -339,6 +339,12 @@ jobs:
           print("local-provider trajectory verified: screenshot read, GUI tool calls, and independent 1.0 score")
           PY
           done
+          python workflow/images/desktop_baseline/compare_repeated_runs.py \
+            --first "$RUNNER_TEMP/upstream-openclaw-stub-first" \
+            --repeat "$RUNNER_TEMP/upstream-openclaw-stub-repeat" \
+            --mode openclaw-local-stub \
+            --upstream-sha "$UPSTREAM_MASTER_SHA" \
+            --output "$RUNNER_TEMP/upstream-openclaw-stub-first/desktop_reproducibility_manifest.json"
           echo "Local-provider tool loop repeated on upstream master $UPSTREAM_MASTER_SHA; no external model provider was called."
 
       - name: Verify screenshot-grounded OpenClaw clicks at a second window origin
@@ -653,15 +659,23 @@ jobs:
             --upstream-sha "$UPSTREAM_MASTER_SHA" \
             --output "$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-first/desktop_reproducibility_manifest.json"
 
-      - name: Assert OpenClaw local-provider artifact handoff equivalence
+      - name: Assert all three OpenClaw local-provider artifact handoff modes are equivalent
         shell: bash
         working-directory: ${{ runner.temp }}/upstream-master
         run: |
           set -euo pipefail
           python workflow/images/desktop_baseline/compare_handoff_modes.py \
+            --first "$RUNNER_TEMP/upstream-openclaw-stub-first/desktop_reproducibility_manifest.json" \
+            --second "$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-first/desktop_reproducibility_manifest.json" \
+            --output "$RUNNER_TEMP/upstream-openclaw-stub-first/bounded-vs-bind-mount.json"
+          python workflow/images/desktop_baseline/compare_handoff_modes.py \
+            --first "$RUNNER_TEMP/upstream-openclaw-stub-first/desktop_reproducibility_manifest.json" \
+            --second "$RUNNER_TEMP/upstream-docker-cp-openclaw-stub-first/desktop_reproducibility_manifest.json" \
+            --output "$RUNNER_TEMP/upstream-openclaw-stub-first/bounded-vs-docker-cp.json"
+          python workflow/images/desktop_baseline/compare_handoff_modes.py \
             --first "$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-first/desktop_reproducibility_manifest.json" \
             --second "$RUNNER_TEMP/upstream-docker-cp-openclaw-stub-first/desktop_reproducibility_manifest.json" \
-            --output "$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-first/handoff-equivalence.json"
+            --output "$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-first/bind-mount-vs-docker-cp.json"
 
       - name: Confirm the no-mount negative control on upstream runner
         shell: bash

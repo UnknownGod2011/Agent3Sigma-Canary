@@ -41,11 +41,13 @@ def _load_manifest(path: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"cannot read handoff manifest {path}: {exc}") from exc
 
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 2:
         raise ValueError(f"unsupported handoff manifest schema in {path}")
-    for key in ("task_id", "mode", "upstream_master_sha"):
+    for key in ("task_id", "mode", "upstream_master_sha", "task_definition_sha256"):
         if not isinstance(manifest.get(key), str) or not manifest[key]:
             raise ValueError(f"handoff manifest {path} has no valid {key}")
+    if not _is_sha256(manifest["task_definition_sha256"]):
+        raise ValueError(f"handoff manifest {path} has invalid task_definition_sha256")
 
     reproducible = manifest.get("reproducible")
     if not isinstance(reproducible, dict) or any(
@@ -118,7 +120,13 @@ def compare_handoff_modes(first_path: Path, second_path: Path) -> dict[str, Any]
     first = _load_manifest(first_path)
     second = _load_manifest(second_path)
 
-    for key in ("schema_version", "task_id", "mode", "upstream_master_sha"):
+    for key in (
+        "schema_version",
+        "task_id",
+        "mode",
+        "upstream_master_sha",
+        "task_definition_sha256",
+    ):
         if first.get(key) != second.get(key):
             raise ValueError(
                 f"handoff manifests differ in {key}: "
@@ -136,10 +144,11 @@ def compare_handoff_modes(first_path: Path, second_path: Path) -> dict[str, Any]
                 )
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "task_id": first["task_id"],
         "mode": first["mode"],
         "upstream_master_sha": first["upstream_master_sha"],
+        "task_definition_sha256": first["task_definition_sha256"],
         "equivalent": True,
         "runs_compared": list(RUNS),
         "evidence_fields": list(EVIDENCE_KEYS),

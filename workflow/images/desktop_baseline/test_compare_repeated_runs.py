@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import shutil
 import tempfile
@@ -13,6 +14,7 @@ from compare_repeated_runs import compare_runs
 
 TASK_ID = "task_9000_desktop_notes_gui"
 TARGET = "AgentCanary desktop baseline complete"
+TASK_DEFINITION_BYTES = b"desktop baseline task definition for provenance testing\n"
 
 
 def _png(marker: int = 0) -> bytes:
@@ -107,6 +109,8 @@ class CompareRepeatedRunsTests(unittest.TestCase):
         self.repeat = self.root / "repeat"
         self.first.mkdir()
         self.repeat.mkdir()
+        self.task_definition = self.root / "task_9000_desktop_notes_gui.md"
+        self.task_definition.write_bytes(TASK_DEFINITION_BYTES)
         _write_run(self.first)
         _write_run(self.repeat)
 
@@ -115,9 +119,15 @@ class CompareRepeatedRunsTests(unittest.TestCase):
 
     def test_identical_runs_produce_reproducible_manifest(self) -> None:
         manifest = compare_runs(
-            self.first, self.repeat, mode="reference", upstream_sha="abc123"
+            self.first, self.repeat, mode="reference", upstream_sha="abc123",
+            task_definition=self.task_definition
         )
+        self.assertEqual(manifest["schema_version"], 2)
         self.assertEqual(manifest["upstream_master_sha"], "abc123")
+        self.assertEqual(
+            manifest["task_definition_sha256"],
+            hashlib.sha256(TASK_DEFINITION_BYTES).hexdigest(),
+        )
         self.assertTrue(manifest["reproducible"]["final_state_bytes"])
         self.assertTrue(manifest["reproducible"]["gui_action_sequence"])
         self.assertTrue(manifest["reproducible"]["screenshots"])
@@ -132,14 +142,16 @@ class CompareRepeatedRunsTests(unittest.TestCase):
         _write_run(self.repeat, save_x=360)
         with self.assertRaisesRegex(ValueError, "gui_action_sha256"):
             compare_runs(
-                self.first, self.repeat, mode="reference", upstream_sha="abc123"
+                self.first, self.repeat, mode="reference", upstream_sha="abc123",
+                task_definition=self.task_definition
             )
 
     def test_screenshot_mismatch_fails(self) -> None:
         _write_run(self.repeat, image_marker=1)
         with self.assertRaisesRegex(ValueError, "screenshot_sha256"):
             compare_runs(
-                self.first, self.repeat, mode="reference", upstream_sha="abc123"
+                self.first, self.repeat, mode="reference", upstream_sha="abc123",
+                task_definition=self.task_definition
             )
 
     def test_invalid_final_state_fails(self) -> None:
@@ -147,7 +159,8 @@ class CompareRepeatedRunsTests(unittest.TestCase):
         state_path.write_text('{"saved":false}\n', encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "unexpected final GUI state"):
             compare_runs(
-                self.first, self.repeat, mode="reference", upstream_sha="abc123"
+                self.first, self.repeat, mode="reference", upstream_sha="abc123",
+                task_definition=self.task_definition
             )
 
     def test_invalid_save_count_fails(self) -> None:
@@ -163,8 +176,20 @@ class CompareRepeatedRunsTests(unittest.TestCase):
                 state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "unexpected final GUI state"):
                     compare_runs(
-                        self.first, self.repeat, mode="reference", upstream_sha="abc123"
+                        self.first, self.repeat, mode="reference", upstream_sha="abc123",
+                        task_definition=self.task_definition
                     )
+
+    def test_missing_task_definition_fails(self) -> None:
+        self.task_definition.unlink()
+        with self.assertRaisesRegex(ValueError, "cannot read task definition"):
+            compare_runs(
+                self.first,
+                self.repeat,
+                mode="reference",
+                upstream_sha="abc123",
+                task_definition=self.task_definition,
+            )
 
     def test_incomplete_grade_fails(self) -> None:
         result = next(
@@ -175,7 +200,8 @@ class CompareRepeatedRunsTests(unittest.TestCase):
         result.write_text(json.dumps(data), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "full automated score"):
             compare_runs(
-                self.first, self.repeat, mode="reference", upstream_sha="abc123"
+                self.first, self.repeat, mode="reference", upstream_sha="abc123",
+                task_definition=self.task_definition
             )
 
 

@@ -192,7 +192,13 @@ def compare_runs(
     *,
     mode: str,
     upstream_sha: str,
+    task_definition: Path,
 ) -> dict[str, Any]:
+    try:
+        task_definition_sha256 = hashlib.sha256(task_definition.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise ValueError(f"cannot read task definition {task_definition}: {exc}") from exc
+
     first = _single_result(first_root)
     repeat = _single_result(repeat_root)
     for key in ("state_sha256", "gui_action_sha256", "screenshot_sha256"):
@@ -202,10 +208,11 @@ def compare_runs(
                 f"{first[key]!r} != {repeat[key]!r}"
             )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "task_id": TASK_ID,
         "mode": mode,
         "upstream_master_sha": upstream_sha,
+        "task_definition_sha256": task_definition_sha256,
         "reproducible": {
             "final_state_bytes": True,
             "gui_action_sequence": True,
@@ -223,6 +230,7 @@ def main() -> int:
         "--mode", required=True, choices=("reference", "openclaw-local-stub")
     )
     parser.add_argument("--upstream-sha", required=True)
+    parser.add_argument("--task-definition", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
@@ -232,6 +240,7 @@ def main() -> int:
             args.repeat,
             mode=args.mode,
             upstream_sha=args.upstream_sha,
+            task_definition=args.task_definition,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(
@@ -248,6 +257,7 @@ def main() -> int:
             {
                 "mode": manifest["mode"],
                 "upstream_master_sha": args.upstream_sha,
+                "task_definition_sha256": manifest["task_definition_sha256"],
                 "state_sha256": first["state_sha256"],
                 "gui_action_sha256": first["gui_action_sha256"],
                 "screenshot_sha256": first["screenshot_sha256"],

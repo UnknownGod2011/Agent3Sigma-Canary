@@ -187,6 +187,7 @@ jobs:
             --repeat "$RUNNER_TEMP/upstream-reference-repeat" \
             --mode reference \
             --upstream-sha "$UPSTREAM_MASTER_SHA" \
+            --task-definition tasks/desktop_baseline/task_9000_desktop_notes_gui.md \
             --output "$RUNNER_TEMP/upstream-reference-first/desktop_reproducibility_manifest.json"
           echo "Reference lifecycle repeated on upstream master $UPSTREAM_MASTER_SHA"
 
@@ -344,6 +345,7 @@ jobs:
             --repeat "$RUNNER_TEMP/upstream-openclaw-stub-repeat" \
             --mode openclaw-local-stub \
             --upstream-sha "$UPSTREAM_MASTER_SHA" \
+            --task-definition tasks/desktop_baseline/task_9000_desktop_notes_gui.md \
             --output "$RUNNER_TEMP/upstream-openclaw-stub-first/desktop_reproducibility_manifest.json"
           echo "Local-provider tool loop repeated on upstream master $UPSTREAM_MASTER_SHA; no external model provider was called."
 
@@ -432,6 +434,7 @@ jobs:
             --repeat "$RUNNER_TEMP/upstream-bind-mount-reference-repeat" \
             --mode reference \
             --upstream-sha "$UPSTREAM_MASTER_SHA" \
+            --task-definition tasks/desktop_baseline/task_9000_desktop_notes_gui.md \
             --output "$RUNNER_TEMP/upstream-bind-mount-reference-first/desktop_reproducibility_manifest.json"
 
       - name: Run docker-cp artifact handoff twice on upstream runner
@@ -457,6 +460,7 @@ jobs:
             --repeat "$RUNNER_TEMP/upstream-docker-cp-reference-repeat" \
             --mode reference \
             --upstream-sha "$UPSTREAM_MASTER_SHA" \
+            --task-definition tasks/desktop_baseline/task_9000_desktop_notes_gui.md \
             --output "$RUNNER_TEMP/upstream-docker-cp-reference-first/desktop_reproducibility_manifest.json"
 
       - name: Assert all three reference artifact handoff modes are equivalent
@@ -534,6 +538,7 @@ jobs:
             --repeat "$RUNNER_TEMP/upstream-docker-cp-openclaw-stub-repeat" \
             --mode openclaw-local-stub \
             --upstream-sha "$UPSTREAM_MASTER_SHA" \
+            --task-definition tasks/desktop_baseline/task_9000_desktop_notes_gui.md \
             --output "$RUNNER_TEMP/upstream-docker-cp-openclaw-stub-first/desktop_reproducibility_manifest.json"
 
       - name: Confirm Docker CLI no-copyback negative control on upstream runner
@@ -657,6 +662,7 @@ jobs:
             --repeat "$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-repeat" \
             --mode openclaw-local-stub \
             --upstream-sha "$UPSTREAM_MASTER_SHA" \
+            --task-definition tasks/desktop_baseline/task_9000_desktop_notes_gui.md \
             --output "$RUNNER_TEMP/upstream-bind-mount-openclaw-stub-first/desktop_reproducibility_manifest.json"
 
       - name: Assert all three OpenClaw local-provider artifact handoff modes are equivalent

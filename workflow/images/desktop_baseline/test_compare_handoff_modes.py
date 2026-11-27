@@ -39,10 +39,11 @@ class CompareHandoffModesTests(unittest.TestCase):
             "verification_retry_count": 0,
         }
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "task_id": "task_9000_desktop_notes_gui",
             "mode": "reference",
             "upstream_master_sha": "e" * 40,
+            "task_definition_sha256": "f" * 64,
             "reproducible": {
                 "final_state_bytes": True,
                 "gui_action_sequence": True,
@@ -69,6 +70,17 @@ class CompareHandoffModesTests(unittest.TestCase):
         result = compare_handoff_modes(self.first, self.second)
         self.assertTrue(result["equivalent"])
         self.assertEqual(result["runs_compared"], ["first", "repeat"])
+        self.assertEqual(result["task_definition_sha256"], "f" * 64)
+
+    def test_task_definition_mismatch_fails(self) -> None:
+        self._mutate_second(lambda m: m.update(task_definition_sha256="0" * 64))
+        with self.assertRaisesRegex(ValueError, "differ in task_definition_sha256"):
+            compare_handoff_modes(self.first, self.second)
+
+    def test_invalid_task_definition_hash_fails(self) -> None:
+        self._mutate_second(lambda m: m.update(task_definition_sha256="not-a-sha256"))
+        with self.assertRaisesRegex(ValueError, "invalid task_definition_sha256"):
+            compare_handoff_modes(self.first, self.second)
 
     def test_state_artifact_mismatch_fails(self) -> None:
         self._mutate_second(

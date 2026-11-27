@@ -63,6 +63,41 @@ class EmbeddedScriptTests(unittest.TestCase):
                                    capture_output=True,text=True,check=False)
             self.assertNotEqual(result.returncode,0)
 
+    def test_state_reader_refuses_fifo_without_blocking(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent=Path(tmp)/"desktop"; parent.mkdir()
+            fifo=parent/"state.json"
+            os.mkfifo(fifo)
+            result=subprocess.run(
+                [sys.executable,"-c",export.STATE_SCRIPT,str(parent),fifo.name],
+                capture_output=True,text=True,check=False,timeout=2
+            )
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn("state artifact is not a bounded regular file",result.stderr)
+
+    def test_state_reader_refuses_hardlinked_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent=Path(tmp)/"desktop"; parent.mkdir()
+            source=parent/"source.json"; source.write_text('{"saved":true}')
+            os.link(source,parent/"state.json")
+            result=subprocess.run(
+                [sys.executable,"-c",export.STATE_SCRIPT,str(parent),"state.json"],
+                capture_output=True,text=True,check=False,timeout=2
+            )
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn("state artifact is not a bounded regular file",result.stderr)
+
+    def test_state_reader_refuses_oversized_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent=Path(tmp)/"desktop"; parent.mkdir()
+            (parent/"state.json").write_bytes(b"x"*(export.MAX_STATE+1))
+            result=subprocess.run(
+                [sys.executable,"-c",export.STATE_SCRIPT,str(parent),"state.json"],
+                capture_output=True,text=True,check=False,timeout=2
+            )
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn("state artifact is not a bounded regular file",result.stderr)
+
 class HostExportTests(unittest.TestCase):
     def test_transcript_export_uses_docker_exec_and_writes_allowlisted_file(self):
         payload={"files":[{"name":"session-1.jsonl","mtime_ns":1700000000000000000,
